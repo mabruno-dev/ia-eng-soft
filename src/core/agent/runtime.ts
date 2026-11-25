@@ -21,6 +21,8 @@ export interface RunAgentOptions<T> {
   llm: LLMClient;
   maxSteps?: number; // padrão 8
   finalSchema: z.ZodType<T>; // a resposta FINAL (texto sem toolCalls) é JSON validado por este schema
+  /** Quantas vezes devolver o erro de validação da resposta final ao LLM (padrão 1). */
+  maxRepairs?: number;
   trace?: TraceWriter;
   /** Acumula { steps, toolCalls } por agente para o RunRecord. */
   meter?: AgentMeter;
@@ -112,7 +114,8 @@ export async function runAgent<T>(opts: RunAgentOptions<T>): Promise<RunAgentRes
 
   let steps = 0;
   let toolCalls = 0;
-  let repairUsed = false;
+  const maxRepairs = opts.maxRepairs ?? 1;
+  let repairs = 0;
 
   try {
     while (true) {
@@ -156,8 +159,8 @@ export async function runAgent<T>(opts: RunAgentOptions<T>): Promise<RunAgentRes
         return { output: v.value, steps, toolCalls };
       }
       await trace?.write({ agent: name, step: steps, kind: 'invalid_final', text, error: v.error, llmMs, ms: now() - stepStart });
-      if (repairUsed) throw new AgentOutputError(name, v.error, res.text);
-      repairUsed = true;
+      if (repairs >= maxRepairs) throw new AgentOutputError(name, v.error, res.text);
+      repairs++;
       messages.push({ role: 'assistant', content: res.text });
       messages.push({
         role: 'user',
