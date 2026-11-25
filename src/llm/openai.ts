@@ -87,6 +87,7 @@ export function fromOpenAICompletion(completion: ChatCompletion): LLMResponse {
 export class OpenAIClient implements LLMClient {
   private readonly client: ChatCompletionsApi;
   private readonly model: string;
+  readonly supportsJsonMode = true;
 
   constructor(opts: OpenAIClientOptions) {
     this.model = opts.model;

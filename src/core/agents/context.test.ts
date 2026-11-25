@@ -6,6 +6,7 @@ import { FakeLLM } from '../../llm/fake';
 import { AgentOutputError } from '../agent/runtime';
 import { AgentMeter, MeteredLLM } from '../metrics';
 import type { ChatMessage, ToolCall } from '../types';
+import { CONTEXT_SYSTEM_PROMPT } from '../prompts/context';
 import { buildContext, defaultTestFilePath } from './context';
 
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/sample-app', import.meta.url));
@@ -140,4 +141,65 @@ describe('buildContext (agente 01)', () => {
   it('defaultTestFilePath', () => {
     expect(defaultTestFilePath('src/components/LoginForm.tsx').replace(/\\/g, '/')).toBe('src/components/LoginForm.test.tsx');
   });
+
+  it('(fecho) Button sem imports locais: mockTarget sugerido fora do grafo é recusado e o resultado volta vazio', async () => {
+    const BTN = 'src/components/Button.tsx';
+    const BTN_TEST = 'src/components/Button.test.tsx';
+    const answer = (mockTargets: string[]) =>
+      JSON.stringify({
+        componentName: 'Button',
+        allowedImports: [{ name: 'Button', specifier: './Button', kind: 'named', isExternal: false }],
+        dependencies: [],
+        props: 'export interface ButtonProps { children: ReactNode }',
+        mockTargets,
+      });
+    const fake = new FakeLLM({
+      context: [
+        call('list_imports', { file: BTN }),
+        call('relative_specifier', { fromTestFile: BTN_TEST, targetFile: BTN }),
+        // o caminho existe e foi devolvido por ferramenta, mas está fora do grafo de imports do Button
+        call('relative_specifier', { fromTestFile: BTN_TEST, targetFile: 'src/services/authApi.ts' }),
+        answer(['../services/authApi']),
+        answer([]),
+      ],
+    });
+
+    const ctx = await buildContext({ workspaceRoot: FIXTURE, componentPath: BTN, llm: fake });
+
+    expect(ctx.mockTargets).toEqual([]);
+    const feedback = fake.requestsFor('context').at(-1)!.messages.at(-1)!.content;
+    expect(feedback).toMatch(/"\.\.\/services\/authApi" \(src\/services\/authApi\.ts\) está fora do grafo de dependências do componente/);
+  });
+
+  it('(fecho) allowedImports de módulo fora do grafo (ex.: App.tsx) é recusado; dependência indireta é aceita', async () => {
+    const fake = new FakeLLM({
+      context: [
+        ...exploration(),
+        call('relative_specifier', { fromTestFile: TEST_FILE, targetFile: 'src/App.tsx' }),
+        call('relative_specifier', { fromTestFile: TEST_FILE, targetFile: 'src/state/cartReducer.ts' }),
+        finalAnswer({
+          allowedImports: [
+            { name: 'CartSummary', specifier: './CartSummary', kind: 'named', isExternal: false },
+            { name: 'App', specifier: '../App', kind: 'named', isExternal: false },
+          ],
+        }),
+        finalAnswer({
+          allowedImports: [
+            { name: 'CartSummary', specifier: './CartSummary', kind: 'named', isExternal: false },
+            { name: 'cartTotal', specifier: '../state/cartReducer', kind: 'named', isExternal: false }, // profundidade 2
+          ],
+        }),
+      ],
+    });
+    const ctx = await buildContext({ workspaceRoot: FIXTURE, componentPath: COMPONENT, llm: fake });
+    expect(ctx.allowedImports.map((i) => i.specifier)).toEqual(['./CartSummary', '../state/cartReducer']);
+    expect(fake.requestsFor('context').at(-1)!.messages.at(-1)!.content).toMatch(/"\.\.\/App" \(src\/App\.tsx\) está fora do grafo/);
+  });
+
+  it('o prompt proíbe procurar usos do componente e define mockTargets por I/O/estado global', () => {
+    expect(CONTEXT_SYSTEM_PROMPT).toContain('NÃO procure quem usa o componente');
+    expect(CONTEXT_SYSTEM_PROMPT).toContain('App.tsx');
+    expect(CONTEXT_SYSTEM_PROMPT).toMatch(/Componentes puros .* têm mockTargets VAZIO/);
+  });
 });
+

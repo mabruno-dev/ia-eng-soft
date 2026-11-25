@@ -19,8 +19,11 @@ export interface TraceEntry {
   ts: string;
   agent: string;
   step: number; // 1-based
-  /** tool_calls: o LLM pediu ferramentas; final: resposta final válida; invalid_final: JSON final rejeitado. */
-  kind: 'tool_calls' | 'final' | 'invalid_final' | 'step_limit';
+  /**
+   * tool_calls: o LLM pediu ferramentas; final: resposta final válida; invalid_final: JSON final rejeitado;
+   * warning: correção/aviso do código (o run segue); error: erro que encerrou o run (texto completo em `error`).
+   */
+  kind: 'tool_calls' | 'final' | 'invalid_final' | 'step_limit' | 'warning' | 'error';
   text?: string;
   tools?: TraceToolCall[];
   error?: string;

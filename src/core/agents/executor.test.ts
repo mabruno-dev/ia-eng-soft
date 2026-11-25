@@ -61,6 +61,10 @@ const toolResults = (msgs: ChatMessage[]) =>
   msgs.filter((m): m is Extract<ChatMessage, { role: 'tool' }> => m.role === 'tool').map((m) => JSON.parse(m.content) as Record<string, unknown>);
 
 describe('executeTests (agente 04)', () => {
+  it('o prompt exige summary em português do Brasil', () => {
+    expect(EXECUTOR_SYSTEM_PROMPT).toContain('"summary" é SEMPRE escrito em português do Brasil');
+  });
+
   it('caminho feliz: roda uma vez, passou, categoria null', async () => {
     const { runner, calls } = fakeRunner(ok);
     const fake = new FakeLLM({ [EXECUTOR_AGENT]: [call(), JSON.stringify({ category: null, summary: 'Todos os 3 testes passaram.', flaky: false })] });

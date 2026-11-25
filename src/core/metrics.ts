@@ -20,6 +20,10 @@ export class MeteredLLM implements LLMClient {
 
   constructor(private readonly inner: LLMClient, private readonly now: Clock = defaultClock) {}
 
+  get supportsJsonMode(): boolean {
+    return this.inner.supportsJsonMode === true;
+  }
+
   async complete(req: LLMRequest): Promise<LLMResponse> {
     let s = this.stats.get(req.tag);
     if (!s) this.stats.set(req.tag, (s = emptyStats()));

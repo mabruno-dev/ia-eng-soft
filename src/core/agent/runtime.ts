@@ -27,6 +27,8 @@ export interface RunAgentOptions<T> {
   /** Acumula { steps, toolCalls } por agente para o RunRecord. */
   meter?: AgentMeter;
   temperature?: number;
+  /** Pede JSON estrito ao provider (só é enviado se `llm.supportsJsonMode`). */
+  jsonMode?: boolean;
   now?: () => number;
 }
 
@@ -76,16 +78,32 @@ export function extractJson(text: string): unknown {
     const last = text.lastIndexOf(close);
     if (last > first) candidates.push(text.slice(first, last + 1));
   }
-  let lastErr: unknown;
+  const errors: { src: string; err: unknown }[] = [];
   for (const c of candidates) {
     if (c === undefined || !c.trim()) continue;
     try {
       return JSON.parse(c.trim());
     } catch (err) {
-      lastErr = err;
+      errors.push({ src: c.trim(), err });
     }
   }
-  throw new Error(`a resposta final não contém JSON válido (${errMsg(lastErr ?? 'texto vazio')})`);
+  // O erro mais informativo é o do candidato mais específico: bloco cercado, depois o trecho entre chaves.
+  const best = (fence?.[1]?.trim() ? errors[0] : errors.at(-1)) ?? errors[0];
+  throw new Error(`a resposta final não contém JSON válido (${best ? describeJsonError(best.err, best.src) : 'texto vazio'})`);
+}
+
+/** Mensagem do JSON.parse com linha, coluna e trecho em volta da posição do erro (quando houver posição). */
+export function describeJsonError(err: unknown, src: string): string {
+  const msg = errMsg(err);
+  const m = /position (\d+)/.exec(msg);
+  if (!m) return msg;
+  const pos = Math.min(Number(m[1]), src.length);
+  const before = src.slice(0, pos);
+  const line = before.split('\n').length;
+  const column = pos - before.lastIndexOf('\n');
+  const snippet = `${src.slice(Math.max(0, pos - 40), pos)}⟪aqui⟫${src.slice(pos, pos + 40)}`.replace(/\s+/g, ' ');
+  const where = /line \d+ column \d+/.test(msg) ? '' : ` — linha ${line}, coluna ${column}`;
+  return `${msg}${where}; trecho: «${snippet}»`;
 }
 
 function validateFinal<T>(text: string, schema: z.ZodType<T>): { ok: true; value: T } | { ok: false; error: string } {
@@ -127,6 +145,7 @@ export async function runAgent<T>(opts: RunAgentOptions<T>): Promise<RunAgentRes
         messages: [...messages],
         ...(specs.length ? { tools: specs } : {}),
         ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+        ...(opts.jsonMode && llm.supportsJsonMode ? { jsonMode: true } : {}),
         tag: name,
       });
       const llmMs = now() - stepStart;

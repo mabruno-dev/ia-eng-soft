@@ -62,6 +62,10 @@ export function formatStep(label: string, e: TraceEntry, opts: FormatOptions = {
       return [`${tag} ↺ resposta final recusada pela validação: ${(e.error ?? '').split('\n')[0]}`];
     case 'step_limit':
       return [`${tag} ⛔ ${e.error}`];
+    case 'warning':
+      return [`${tag} ⚠ ${oneLine(e.text ?? '', Math.max(n, 240))}`];
+    case 'error':
+      return [];
   }
 }
 

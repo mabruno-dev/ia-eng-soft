@@ -212,4 +212,30 @@ describe('extractJson', () => {
     expect(extractJson('Resultado: {"a":{"b":2}} fim.')).toEqual({ a: { b: 2 } });
     expect(() => extractJson('nada aqui')).toThrow(/JSON válido/);
   });
+
+  it('erro de parse traz posição, linha/coluna e trecho (vai para o reparo do JSON)', () => {
+    let msg = '';
+    try {
+      extractJson('```json\n{\n  "code": "a",\n  "x": 1,\n}\n```');
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    expect(msg).toMatch(/position \d+/);
+    expect(msg).toMatch(/linha 4|line 4/);
+    expect(msg).toContain('⟪aqui⟫');
+  });
+});
+
+describe('jsonMode', () => {
+  const schema = z.object({ answer: z.number() });
+  it('é enviado só quando pedido e o provider suporta', async () => {
+    const yes = new FakeLLM(['{"answer": 1}']);
+    yes.supportsJsonMode = true;
+    await runAgent({ name: 'x', system: 's', input: 'i', tools: [], llm: yes, finalSchema: schema, jsonMode: true });
+    expect(yes.requests[0]!.jsonMode).toBe(true);
+
+    const no = new FakeLLM(['{"answer": 1}']);
+    await runAgent({ name: 'x', system: 's', input: 'i', tools: [], llm: no, finalSchema: schema, jsonMode: true });
+    expect('jsonMode' in no.requests[0]!).toBe(false);
+  });
 });

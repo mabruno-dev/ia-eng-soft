@@ -7,9 +7,11 @@ import { buildContext, defaultTestFilePath } from './agents/context';
 import { type Diagnosis, executeTests } from './agents/executor';
 import { generateTest } from './agents/generator';
 import { type RepairTestOptions, repairTest } from './agents/repairer';
-import { type HealIteration, healLoop } from './healLoop';
+import { type HealIteration, healLoop, syncTestFile } from './healLoop';
 import { AgentMeter, MeteredLLM, newRunId, StageTimer, writeRunRecord } from './metrics';
+import { acquireTestFileLock } from './runLock';
 import type { RunJestFn } from './tools/jest';
+import type { TypecheckFn } from './tools/typecheck';
 import { getWorkspace } from './tools/workspace';
 import type { Asker, ContextResult, Coverage, ExecResult, LLMClient, PipelineConfig, RunRecord } from './types';
 
@@ -57,6 +59,8 @@ export interface RunPipelineOptions {
   runJest?: RunJestFn;
   /** Executor injetável (padrão: agente 04). */
   execute?: (o: { ctx: ContextResult; testFilePath: string; iteration: number }) => Promise<{ exec: ExecResult; diagnosis: Diagnosis }>;
+  /** Typechecker do Gerador injetável (padrão: ts-morph com o tsconfig do workspace). */
+  typecheck?: TypecheckFn;
 }
 
 export function runFiles(workspaceRoot: string, runId: string) {
@@ -67,6 +71,19 @@ export function runFiles(workspaceRoot: string, runId: string) {
 const ZERO: Coverage = { statements: 0, branches: 0, functions: 0, lines: 0 };
 const countLines = (code: string) => (code ? code.replace(/\r\n/g, '\n').replace(/\n+$/, '').split('\n').length : 0);
 const errMsg = (e: unknown) => (e instanceof Error ? `${e.name !== 'Error' ? `${e.name}: ` : ''}${e.message}` : String(e));
+/** Texto completo do erro para o trace: stack (ou mensagem) + campos extras de erros de agente. */
+function fullError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const extra = e as Error & { validationError?: string; rawText?: string; cause?: unknown };
+  return [
+    e.stack ?? errMsg(e),
+    extra.validationError ? `validationError: ${extra.validationError}` : '',
+    extra.rawText ? `rawText: ${extra.rawText}` : '',
+    extra.cause !== undefined ? `cause: ${fullError(extra.cause)}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
 
 /** TraceWriter que também emite cada passo como evento `agent-step`. */
 class ObservedTraceWriter extends TraceWriter {
@@ -124,10 +141,13 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
   let generatedCode = '';
   let testFilePath: string | undefined;
   let partial: Partial<RunRecord> = {};
+  let releaseLock: (() => void) | undefined;
 
   try {
     const ws = getWorkspace(workspaceRoot);
     ws.abs(componentPath); // confinamento: falha cedo se o componente estiver fora do workspace
+    // Trava do arquivo de teste: outra execução no mesmo componente apagaria/sobrescreveria o nosso arquivo.
+    releaseLock = acquireTestFileLock(workspaceRoot, ws.rel(ws.abs(defaultTestFilePath(componentPath))), runId);
 
     // 01 — Contexto
     const ctx = await stage('context', 'context', () => buildContext({ ...common, workspaceRoot, componentPath }), (c) =>
@@ -142,8 +162,11 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
     }
 
     // 03 — Gerador
-    const gen = await stage('generator', 'generator', () => generateTest({ ...common, ctx, workspaceRoot, ...(rules ? { rules } : {}) }), (g) =>
-      `${g.plan.scenarios.length} cenários; ${countLines(g.code)} linhas`,
+    const gen = await stage(
+      'generator',
+      'generator',
+      () => generateTest({ ...common, ctx, workspaceRoot, ...(rules ? { rules } : {}), ...(opts.typecheck ? { typecheck: opts.typecheck } : {}) }),
+      (g) => `${g.plan.scenarios.length} cenários; ${countLines(g.code)} linhas${g.warnings.length ? `; ${g.warnings.length} aviso(s)` : ''}`,
     );
     generatedCode = gen.code;
 
@@ -197,7 +220,11 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       };
     } else {
       // Baseline: uma execução só para medir, sem reparo.
-      const r = await stage('executor', null, () => execute(0), (x) => (x.exec.passed ? 'passou' : `falhou (${x.diagnosis.category ?? '?'})`));
+      const r = await stage('executor', null, async () => {
+        const warning = syncTestFile(testAbs, generatedCode);
+        if (warning) await trace.write({ agent: 'pipeline', step: 0, kind: 'warning', text: `${warning}: ${tfp}`, llmMs: 0, ms: 0 });
+        return execute(0);
+      }, (x) => (x.exec.passed ? 'passou' : `falhou (${x.diagnosis.category ?? '?'})`));
       exec = r.exec;
       status = exec.passed ? 'PASSED' : 'FAILED';
       finalCode = generatedCode;
@@ -226,6 +253,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
   } catch (err) {
     const message = errMsg(err);
     emit({ type: 'error', message });
+    await trace.write({ agent: 'pipeline', step: 0, kind: 'error', text: message, error: fullError(err), llmMs: 0, ms: 0 }).catch(() => undefined);
     let finalCode = generatedCode;
     try {
       if (testFilePath) {
@@ -266,6 +294,8 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       emit({ type: 'stage-end', stage: 'record', label: STAGE_LABELS.record, ms: performance.now() - t0, ok: true, summary: runFiles(workspaceRoot, runId).record });
     } catch (err) {
       emit({ type: 'stage-end', stage: 'record', label: STAGE_LABELS.record, ms: performance.now() - t0, ok: false, summary: errMsg(err) });
+    } finally {
+      releaseLock?.();
     }
     return done;
   }

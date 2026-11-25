@@ -5,7 +5,7 @@ import { type AgentTool, runAgent } from '../agent/runtime';
 import type { TraceWriter } from '../agent/trace';
 import type { AgentMeter } from '../metrics';
 import { CONTEXT_SYSTEM_PROMPT, contextUserPrompt } from '../prompts/context';
-import { createCodeTools } from '../tools/code';
+import { createCodeTools, type ImportClosure, importClosure } from '../tools/code';
 import { getWorkspace, isRelativeSpecifier, packageName, type Workspace, WorkspaceError } from '../tools/workspace';
 import type { ContextResult, ImportInfo, LLMClient } from '../types';
 
@@ -90,6 +90,32 @@ function specifierProblem(ws: Workspace, testFileAbs: string, specifier: string,
   return `"${specifier}" não é arquivo local nem dependência do package.json`;
 }
 
+/**
+ * Confinamento ao grafo de dependências: um especificador local precisa resolver para um arquivo do fecho
+ * transitivo de imports do componente; um pacote externo em mockTargets precisa ser importado pelo fecho.
+ * Devolve a mensagem de erro (que volta ao agente) ou undefined.
+ */
+export function closureProblem(
+  ws: Workspace,
+  testFileAbs: string,
+  specifier: string,
+  closure: ImportClosure,
+  field: 'allowedImports' | 'mockTargets',
+): string | undefined {
+  const local = ws.resolveLocal(testFileAbs, specifier);
+  if (local) {
+    if (closure.files.has(local)) return undefined;
+    return (
+      `"${specifier}" (${ws.rel(local)}) está fora do grafo de dependências do componente: ${field} só pode conter o componente e ` +
+      'módulos que ele importa direta ou indiretamente (e os tipos que eles exportam). Remova-o.'
+    );
+  }
+  if (field === 'mockTargets' && !ws.isBuiltin(specifier) && !closure.packages.has(packageName(specifier))) {
+    return `"${specifier}" não é importado pelo componente nem por suas dependências; não há o que mockar. Remova-o de mockTargets.`;
+  }
+  return undefined;
+}
+
 /** Agente 01 — Contexto: o LLM explora o grafo de dependências; o código re-verifica caminhos e lê fontes do disco. */
 export async function buildContext(opts: BuildContextOptions): Promise<ContextResult> {
   const ws = getWorkspace(opts.workspaceRoot);
@@ -107,17 +133,19 @@ export async function buildContext(opts: BuildContextOptions): Promise<ContextRe
   const maxDepth = opts.maxDepth ?? DEFAULT_MAX_DEPTH;
   const guessedName = basename(componentAbs, extname(componentAbs));
 
+  const closure = importClosure(ws, componentAbs);
   const toolSpecifiers = new Set<string>();
   const tools = recordSpecifiers(createCodeTools(ws), toolSpecifiers);
 
   // Validação semântica dentro do loop: os erros voltam ao agente, que ainda pode chamar ferramentas.
   const finalSchema = finalSchemaBase.superRefine((ans, ctx) => {
     ans.allowedImports.forEach((imp, i) => {
-      const problem = specifierProblem(ws, testFileAbs, imp.specifier, toolSpecifiers);
+      const problem =
+        specifierProblem(ws, testFileAbs, imp.specifier, toolSpecifiers) ?? closureProblem(ws, testFileAbs, imp.specifier, closure, 'allowedImports');
       if (problem) ctx.addIssue({ code: 'custom', path: ['allowedImports', i, 'specifier'], message: problem });
     });
     ans.mockTargets.forEach((spec, i) => {
-      const problem = specifierProblem(ws, testFileAbs, spec, toolSpecifiers);
+      const problem = specifierProblem(ws, testFileAbs, spec, toolSpecifiers) ?? closureProblem(ws, testFileAbs, spec, closure, 'mockTargets');
       if (problem) ctx.addIssue({ code: 'custom', path: ['mockTargets', i], message: problem });
     });
     ans.dependencies.forEach((dep, i) => {

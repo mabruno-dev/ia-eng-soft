@@ -23,6 +23,8 @@ const estimateTokens = (s: string): number => Math.ceil(s.length / 4);
  */
 export class FakeLLM implements LLMClient {
   readonly requests: LLMRequest[] = [];
+  /** Simula um provider com JSON mode nativo (testes). */
+  supportsJsonMode = false;
   private readonly queue: FakeReply[] = [];
   private readonly byTag = new Map<string, FakeReply[] | FakeResponder>();
   private readonly responder?: FakeResponder;

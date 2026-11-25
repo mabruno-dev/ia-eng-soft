@@ -47,6 +47,8 @@ export interface RepairTestResult {
 }
 
 export const REPAIR_MAX_STEPS = 10;
+/** Correções do JSON final permitidas (ex.: `evidence` não literal pode ser corrigida mais de uma vez). */
+export const REPAIR_MAX_OUTPUT_REPAIRS = 2;
 
 const finalBase = z.object({
   status: z.enum(['REPAIRED', 'SUSPECTED_COMPONENT_BUG', 'GAVE_UP']),
@@ -139,6 +141,7 @@ export async function repairTest(opts: RepairTestOptions): Promise<RepairTestRes
       finalSchema,
       temperature: 0.2,
       maxSteps: opts.maxSteps ?? REPAIR_MAX_STEPS,
+      maxRepairs: REPAIR_MAX_OUTPUT_REPAIRS,
       ...(opts.trace ? { trace: opts.trace } : {}),
       ...(opts.meter ? { meter: opts.meter } : {}),
     });

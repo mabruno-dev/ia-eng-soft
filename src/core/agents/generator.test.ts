@@ -7,7 +7,18 @@ import { AgentMeter } from '../metrics';
 import { FEW_SHOT_EXAMPLES } from '../prompts/fewshot';
 import { GENERATOR_CODE_SYSTEM_PROMPT, GENERATOR_PLAN_SYSTEM_PROMPT } from '../prompts/generator';
 import type { ChatMessage, ContextResult, TestPlan, ToolCall } from '../types';
-import { checkGeneratedCode, GENERATOR_CODE_AGENT, GENERATOR_PLAN_AGENT, generateTest, knownRuleIds, stripCodeFences } from './generator';
+import { getWorkspace } from '../tools/workspace';
+import type { TypecheckResult } from '../tools/typecheck';
+import {
+  checkGeneratedCode,
+  GENERATOR_CODE_AGENT,
+  GENERATOR_PLAN_AGENT,
+  generateTest,
+  knownRuleIds,
+  looksLikeModuleSpecifier,
+  normalizePlan,
+  stripCodeFences,
+} from './generator';
 
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/sample-app', import.meta.url));
 
@@ -99,6 +110,8 @@ const draftWithBadImport = goodCode.replace(
   "import { login } from '../services/authApi';\nimport { x } from '../componentes/inexistente';",
 );
 
+const tcOk = (): TypecheckResult => ({ ok: true, errors: 0, diagnostics: [] });
+
 let n = 0;
 const call = (name: string, args: Record<string, unknown>): { toolCalls: ToolCall[] } => ({
   toolCalls: [{ id: `c${++n}`, name, arguments: args }],
@@ -116,12 +129,13 @@ describe('generateTest (agente 03)', () => {
       [GENERATOR_CODE_AGENT]: [
         call('validate_imports', { code: draftWithBadImport }),
         call('validate_imports', { code: goodCode }),
+        call('typecheck_test', { code: goodCode }),
         JSON.stringify({ code: goodCode }),
       ],
     });
     const meter = new AgentMeter();
 
-    const res = await generateTest({ ctx, workspaceRoot: FIXTURE, rules: RULES, llm: fake, meter });
+    const res = await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, rules: RULES, llm: fake, meter });
 
     const codeReqs = fake.requestsFor(GENERATOR_CODE_AGENT);
     expect(lastToolResult(codeReqs[1]!.messages)).toEqual({
@@ -135,19 +149,20 @@ describe('generateTest (agente 03)', () => {
     expect(res.plan.scenarios.map((s) => s.fromRules)).toEqual([[], ['R1'], [], [], ['R2']]);
     expect(meter.agents()).toEqual({
       [GENERATOR_PLAN_AGENT]: { steps: 1, toolCalls: 0 },
-      [GENERATOR_CODE_AGENT]: { steps: 3, toolCalls: 2 },
+      [GENERATOR_CODE_AGENT]: { steps: 4, toolCalls: 3 },
     });
-    expect(codeReqs[0]!.tools!.map((t) => t.name)).toEqual(['read_file', 'validate_imports']);
+    expect(codeReqs[0]!.tools!.map((t) => t.name)).toEqual(['read_file', 'validate_imports', 'typecheck_test']);
+    expect(res.warnings).toEqual([]);
   });
 
   it('plano inválido é reparado uma vez', async () => {
     const bad = planJson({ scenarios: scenarios.filter((s) => s.kind !== 'edge').map((s, i) => (i === 0 ? { ...s, kind: 'snapshot' } : s)) });
     const fake = new FakeLLM({
       [GENERATOR_PLAN_AGENT]: [bad, planJson()],
-      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: goodCode }), JSON.stringify({ code: goodCode })],
+      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: goodCode }), call('typecheck_test', { code: goodCode }), JSON.stringify({ code: goodCode })],
     });
 
-    const res = await generateTest({ ctx, workspaceRoot: FIXTURE, llm: fake });
+    const res = await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, llm: fake });
 
     const planReqs = fake.requestsFor(GENERATOR_PLAN_AGENT);
     expect(planReqs).toHaveLength(2);
@@ -162,27 +177,27 @@ describe('generateTest (agente 03)', () => {
     const noAsync = planJson({ scenarios: scenarios.filter((s) => s.kind !== 'async') });
     const fake = new FakeLLM({
       [GENERATOR_PLAN_AGENT]: [noAsync, planJson()],
-      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: goodCode }), JSON.stringify({ code: goodCode })],
+      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: goodCode }), call('typecheck_test', { code: goodCode }), JSON.stringify({ code: goodCode })],
     });
-    await generateTest({ ctx, workspaceRoot: FIXTURE, llm: fake });
+    await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, llm: fake });
     expect(fake.requestsFor(GENERATOR_PLAN_AGENT)[1]!.messages.at(-1)!.content).toMatch(/inclua cenários "async"/);
   });
 
   it('código entregue sem chamar validate_imports é recusado', async () => {
     const fake = new FakeLLM({
       [GENERATOR_PLAN_AGENT]: [planJson()],
-      [GENERATOR_CODE_AGENT]: [JSON.stringify({ code: goodCode }), call('validate_imports', { code: goodCode }), JSON.stringify({ code: goodCode })],
+      [GENERATOR_CODE_AGENT]: [JSON.stringify({ code: goodCode }), call('validate_imports', { code: goodCode }), call('typecheck_test', { code: goodCode }), JSON.stringify({ code: goodCode })],
     });
-    await generateTest({ ctx, workspaceRoot: FIXTURE, llm: fake });
+    await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, llm: fake });
     expect(fake.requestsFor(GENERATOR_CODE_AGENT)[1]!.messages.at(-1)!.content).toMatch(/chame a ferramenta validate_imports/);
   });
 
   it('o prompt contém os specifiers de allowedImports, os mockTargets e as regras', async () => {
     const fake = new FakeLLM({
       [GENERATOR_PLAN_AGENT]: [planJson()],
-      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: goodCode }), JSON.stringify({ code: goodCode })],
+      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: goodCode }), call('typecheck_test', { code: goodCode }), JSON.stringify({ code: goodCode })],
     });
-    await generateTest({ ctx, workspaceRoot: FIXTURE, rules: RULES, llm: fake });
+    await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, rules: RULES, llm: fake });
 
     const planPrompt = fake.requestsFor(GENERATOR_PLAN_AGENT)[0]!.messages[0]!.content;
     const codePrompt = fake.requestsFor(GENERATOR_CODE_AGENT)[0]!.messages[0]!.content;
@@ -199,7 +214,164 @@ describe('generateTest (agente 03)', () => {
   });
 });
 
+describe('Gerador: correções determinísticas do plano, JSON estrito e typecheck', () => {
+  it('plano sem cenário "edge" só gera aviso (no trace e no resultado); o run segue', async () => {
+    const noEdge = planJson({ scenarios: scenarios.filter((s) => s.kind !== 'edge') });
+    const writes: { kind: string; text?: string }[] = [];
+    const trace = { write: async (e: { kind: string; text?: string }) => void writes.push(e) } as unknown as import('../agent/trace').TraceWriter;
+    const fake = new FakeLLM({
+      [GENERATOR_PLAN_AGENT]: [noEdge],
+      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: goodCode }), call('typecheck_test', { code: goodCode }), JSON.stringify({ code: goodCode })],
+    });
+    const res = await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, llm: fake, trace });
+    expect(fake.requestsFor(GENERATOR_PLAN_AGENT)).toHaveLength(1); // não houve recusa
+    expect(res.warnings).toEqual(['plano sem cenário "edge" (caso de borda); seguindo assim mesmo']);
+    expect(writes).toContainEqual(expect.objectContaining({ kind: 'warning', text: res.warnings[0] }));
+  });
+
+  it('mocks do plano: especificadores fora de mockTargets são descartados com aviso; nomes de hooks/stores são texto livre', () => {
+    const ws = getWorkspace(FIXTURE);
+    const plan = {
+      scenarios: [
+        { name: 'a', kind: 'render' as const, description: 'd', mocks: ['../services/authApi', 'useThemeStore', '../services/userApi', 'zustand', 'mockedLogin'], fromRules: [] },
+        { name: 'b', kind: 'edge' as const, description: 'd', mocks: ['@/services/http'], fromRules: [] },
+      ],
+    };
+    const r = normalizePlan(plan, ctx, ws);
+    expect(r.plan.scenarios[0]!.mocks).toEqual(['../services/authApi', 'useThemeStore', 'mockedLogin']);
+    expect(r.plan.scenarios[1]!.mocks).toEqual([]);
+    expect(r.warnings).toHaveLength(3);
+    expect(r.warnings[0]).toMatch(/mock "\.\.\/services\/userApi" do cenário "a" descartado/);
+    expect(looksLikeModuleSpecifier(ws, 'useThemeStore')).toBe(false);
+    expect(looksLikeModuleSpecifier(ws, 'react')).toBe(true);
+  });
+
+  it('jest.mock só é exigido para mockTargets de I/O; store (zustand) em mockTargets fica real', () => {
+    const themeCtx: ContextResult = {
+      ...ctx,
+      componentPath: 'src/components/ThemeToggle.tsx',
+      componentName: 'ThemeToggle',
+      testFilePath: 'src/components/ThemeToggle.test.tsx',
+      allowedImports: [{ name: 'ThemeToggle', specifier: './ThemeToggle', kind: 'named', isExternal: false }],
+      apiCalls: [],
+      mockTargets: ['../state/themeStore'],
+    };
+    const code = `import { render, screen } from '@testing-library/react';
+import { ThemeToggle } from './ThemeToggle';
+describe('ThemeToggle', () => {
+  it('renderiza', () => {
+    render(<ThemeToggle />);
+    expect(screen.getByRole('button')).toHaveTextContent('Tema claro');
+  });
+});
+`;
+    const plan: TestPlan = { scenarios: [{ name: 'renderiza', kind: 'render', description: 'd', mocks: [], fromRules: [] }] };
+    expect(checkGeneratedCode(code, themeCtx, plan, FIXTURE)).toEqual([]);
+    // o serviço de API continua exigindo jest.mock
+    expect(checkGeneratedCode(code, { ...themeCtx, mockTargets: ['../services/authApi'] }, plan, FIXTURE).join('\n')).toMatch(/falta jest.mock\('..\/services\/authApi'\)/);
+  });
+
+  it('jsonMode é pedido nas chamadas dos agentes do Gerador só quando o provider suporta', async () => {
+    const script = () => ({
+      [GENERATOR_PLAN_AGENT]: [planJson()],
+      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: goodCode }), call('typecheck_test', { code: goodCode }), JSON.stringify({ code: goodCode })],
+    });
+    const json = new FakeLLM(script());
+    json.supportsJsonMode = true;
+    await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, llm: json });
+    expect(json.requests.every((r) => r.jsonMode === true)).toBe(true);
+
+    const plain = new FakeLLM(script());
+    await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, llm: plain });
+    expect(plain.requests.some((r) => 'jsonMode' in r)).toBe(false);
+  });
+
+  it('typecheck_test: código que omite children recebe TS2741 e o agente corrige antes de entregar (regressão do Button)', async () => {
+    const buttonCtx: ContextResult = {
+      ...ctx,
+      componentPath: 'src/components/Button.tsx',
+      componentName: 'Button',
+      componentSource: readFileSync(join(FIXTURE, 'src/components/Button.tsx'), 'utf8'),
+      testFilePath: 'src/components/Button.test.tsx',
+      allowedImports: [{ name: 'Button', specifier: './Button', kind: 'named', isExternal: false }],
+      dependencies: [],
+      props: 'export interface ButtonProps { children: ReactNode; variant?: ButtonVariant; disabled?: boolean }',
+      hooks: [],
+      apiCalls: [],
+      mockTargets: [],
+    };
+    const buttonPlan = JSON.stringify({
+      scenarios: [
+        { name: 'renderiza o texto', kind: 'render', description: 'children', mocks: [], fromRules: [] },
+        { name: 'renderiza sem children', kind: 'edge', description: 'sem conteúdo', mocks: [], fromRules: [] },
+      ],
+    });
+    const head = `import { render, screen } from '@testing-library/react';
+import { Button } from './Button';
+
+describe('Button', () => {
+  it('renderiza o texto', () => {
+    render(<Button>Salvar</Button>);
+    expect(screen.getByRole('button', { name: 'Salvar' })).toHaveClass('btn-primary');
+  });
+
+  it('renderiza sem children', () => {
+`;
+    const bad = `${head}    render(<Button></Button>);\n    expect(screen.getByRole('button')).toBeEmptyDOMElement();\n  });\n});\n`;
+    const fixed = `${head}    render(<Button>{null}</Button>);\n    expect(screen.getByRole('button')).toBeEmptyDOMElement();\n  });\n});\n`;
+    const TS2741 = {
+      location: 'src/components/Button.test.tsx:11',
+      code: 'TS2741',
+      message: "Property 'children' is missing in type '{}' but required in type 'ButtonProps'.",
+    };
+    const typecheck = (code: string): TypecheckResult =>
+      code.includes('<Button></Button>') ? { ok: false, errors: 1, diagnostics: [TS2741] } : { ok: true, errors: 0, diagnostics: [] };
+    const fake = new FakeLLM({
+      [GENERATOR_PLAN_AGENT]: [buttonPlan],
+      [GENERATOR_CODE_AGENT]: [
+        call('validate_imports', { code: bad }),
+        call('typecheck_test', { code: bad }),
+        // tenta entregar com erro: o código recusa e devolve os diagnósticos
+        JSON.stringify({ code: bad }),
+        call('typecheck_test', { code: fixed }),
+        JSON.stringify({ code: fixed }),
+      ],
+    });
+
+    const res = await generateTest({ ctx: buttonCtx, workspaceRoot: FIXTURE, llm: fake, typecheck });
+
+    const reqs = fake.requestsFor(GENERATOR_CODE_AGENT);
+    expect(lastToolResult(reqs[2]!.messages)).toEqual({ ok: false, errors: 1, diagnostics: [TS2741] });
+    const feedback = reqs[3]!.messages.at(-1)!.content;
+    expect(feedback).toMatch(/1 erro\(s\) de tipo: src\/components\/Button\.test\.tsx:11 TS2741: Property 'children' is missing/);
+    expect(res.code).toBe(fixed);
+    expect(res.code).not.toContain('<Button></Button>');
+  });
+
+  it('código final diferente do que passou no typecheck_test é recusado', async () => {
+    const fake = new FakeLLM({
+      [GENERATOR_PLAN_AGENT]: [planJson()],
+      [GENERATOR_CODE_AGENT]: [
+        call('validate_imports', { code: goodCode }),
+        call('typecheck_test', { code: draftWithBadImport }),
+        JSON.stringify({ code: goodCode }),
+        call('typecheck_test', { code: goodCode }),
+        JSON.stringify({ code: goodCode }),
+      ],
+    });
+    await generateTest({ ctx, workspaceRoot: FIXTURE, llm: fake, typecheck: tcOk });
+    expect(fake.requestsFor(GENERATOR_CODE_AGENT)[3]!.messages.at(-1)!.content).toMatch(/chame typecheck_test com o código final EXATO/);
+  });
+});
+
 describe('prompts do Gerador', () => {
+  it('pedem tipos corretos (sem omitir props obrigatórias) e stores reais resetados', () => {
+    expect(GENERATOR_CODE_SYSTEM_PROMPT).toContain('NUNCA omita props obrigatórias');
+    expect(GENERATOR_CODE_SYSTEM_PROMPT).toContain('children={null}');
+    expect(GENERATOR_CODE_SYSTEM_PROMPT).toContain('setState(initialState)');
+    expect(GENERATOR_CODE_SYSTEM_PROMPT).toContain('typecheck_test');
+  });
+
   it('seguem AUTOMAT, com CoT no plano e few-shot no código', () => {
     for (const h of ['# Act as', '# User persona', '# Targeted action', '# Output definition', '# Mode of interaction', '# Atypical cases', '# Topic whitelisting']) {
       expect(GENERATOR_PLAN_SYSTEM_PROMPT).toContain(h);
@@ -237,7 +409,7 @@ describe('Outro', () => {
 `;
     const problems = checkGeneratedCode(bad, ctx, plan, FIXTURE).join('\n');
     expect(problems).toMatch(/describe\('LoginForm'/);
-    expect(problems).toMatch(/5 cenários, mas o código tem 0/);
+    expect(problems).toMatch(/5 cenários \(4 fora de "edge"\), mas o código tem 0/);
     expect(problems).toMatch(/asserção trivial/);
     expect(problems).toMatch(/\.skip/);
     expect(problems).toMatch(/falta jest.mock\('..\/services\/authApi'\)/);

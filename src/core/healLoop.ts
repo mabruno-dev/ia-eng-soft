@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import type { TraceWriter } from './agent/trace';
 import { type Diagnosis, executeTests } from './agents/executor';
 import { type RepairStatus, type RepairTestOptions, type RepairTestResult, repairTest } from './agents/repairer';
@@ -117,6 +117,19 @@ export function modificationRate(generated: string, final: string): number {
   return Math.round((lineDiff(generated, final).changed / total) * 10_000) / 10_000;
 }
 
+/**
+ * Garante que o arquivo de teste em disco é o que esta execução gravou por último. Se ele sumiu ou foi alterado
+ * por fora (outro processo no mesmo workspace), regrava `code` e devolve o aviso; senão devolve undefined.
+ */
+export function syncTestFile(abs: string, code: string): string | undefined {
+  const onDisk = existsSync(abs) ? readFileSync(abs, 'utf8') : undefined;
+  if (onDisk === code) return undefined;
+  writeFileSync(abs, code, 'utf8');
+  return onDisk === undefined
+    ? 'o arquivo de teste sumiu durante a execução (outro processo?); regravado com a última versão desta execução'
+    : 'o arquivo de teste foi alterado por fora durante a execução (outro processo?); restaurada a última versão desta execução';
+}
+
 // ---- Loop ----
 
 /**
@@ -138,6 +151,12 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
   };
   const execute: ExecuteFn = opts.execute ?? (() => executeTests({ ctx, workspaceRoot, testFilePath, llm, ...common }));
   const repair: RepairFn = opts.repair ?? repairTest;
+  // Última versão do teste gravada por ESTA execução: antes de cada Executor/Reparador o disco é conferido contra ela.
+  let currentCode = opts.generatedCode;
+  const ensureFile = async () => {
+    const warning = syncTestFile(abs, currentCode);
+    if (warning) await opts.trace?.write({ agent: 'healLoop', step: 0, kind: 'warning', text: `${warning}: ${testFilePath}`, llmMs: 0, ms: 0 });
+  };
 
   const history: HealIteration[] = [];
   const previousAttempts: string[] = [];
@@ -147,6 +166,7 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
   let sameSignatureCount = 0;
   let stopReason: StopReason;
   let status: HealStatus;
+  await ensureFile();
   let { exec, diagnosis } = await execute({ iteration: 0 });
 
   while (true) {
@@ -171,6 +191,7 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
     }
 
     iterations++;
+    await ensureFile();
     const r = await repair({
       ctx,
       workspaceRoot,
@@ -183,6 +204,7 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
       ...common,
     });
     rejectedRepairs += r.rejectedRepairs;
+    currentCode = r.code;
     history.push({
       iteration: iterations,
       category: diagnosis.category,
@@ -210,6 +232,7 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
       [status, stopReason] = ['FAILED', 'GAVE_UP'];
       break;
     }
+    await ensureFile();
     ({ exec, diagnosis } = await execute({ iteration: iterations }));
   }
 

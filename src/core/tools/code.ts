@@ -74,6 +74,36 @@ export function listImports(ws: Workspace, absFile: string): ImportEntry[] {
   return out;
 }
 
+export interface ImportClosure {
+  /** Arquivos locais (absolutos) do fecho, incluindo o próprio componente. */
+  files: Set<string>;
+  /** Pacotes externos importados por algum arquivo do fecho. */
+  packages: Set<string>;
+}
+
+/** Fecho transitivo dos imports locais de um arquivo (o próprio arquivo incluso). Ciclos são tratados. */
+export function importClosure(ws: Workspace, absFile: string): ImportClosure {
+  const files = new Set<string>();
+  const packages = new Set<string>();
+  const queue = [absFile];
+  while (queue.length) {
+    const file = queue.shift()!;
+    if (files.has(file)) continue;
+    files.add(file);
+    let imports: ImportEntry[];
+    try {
+      imports = listImports(ws, file);
+    } catch {
+      continue;
+    }
+    for (const imp of imports) {
+      if (imp.resolvedPath) queue.push(ws.abs(imp.resolvedPath));
+      else if (imp.package) packages.add(imp.package);
+    }
+  }
+  return { files, packages };
+}
+
 /** Especificador relativo de `fromTestFile` para `targetFile` (absolutos): '/', prefixo './' ou '../', sem extensão TS/JS. */
 export function relativeSpecifier(fromTestFile: string, targetFile: string): string {
   let rel = relative(dirname(fromTestFile), targetFile).split(sep).join('/');
@@ -162,7 +192,7 @@ const REDUX_HOOKS = new Set(['useSelector', 'useDispatch', 'useStore', 'useAppSe
 const HTTP_PACKAGES = new Set(['axios', 'ky', 'ofetch', 'superagent']);
 
 /** Classificação de um módulo local importado: define contexto, store ou API? */
-function classifyModule(ws: Workspace, absPath: string): { context: boolean; store: boolean; api: boolean } {
+export function classifyModule(ws: Workspace, absPath: string): { context: boolean; store: boolean; api: boolean } {
   const relPath = `/${ws.rel(absPath)}`;
   let text = '';
   try {

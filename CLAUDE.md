@@ -14,9 +14,9 @@ Componente → 01 Contexto → 02 Elicitação → 03 Gerador → 04 Executor �
 
 | # | Agente | Papel (o que o LLM decide) | Ferramentas (código determinístico) |
 |---|--------|----------------------------|-------------------------------------|
-| 01 | Contexto | Explora o grafo de dependências do componente e decide o que é relevante para testá-lo | `read_file`, `list_imports`, `resolve_import`, `relative_specifier`, `search_code`, `analyze_component` |
+| 01 | Contexto | Explora o grafo de dependências do componente (só para baixo; allowedImports/mockTargets confinados ao fecho de imports, conferido em código) e decide o que é relevante para testá-lo | `read_file`, `list_imports`, `resolve_import`, `relative_specifier`, `search_code`, `analyze_component` |
 | 02 | Elicitação | Decide quais regras de negócio perguntar, e se precisa de pergunta de acompanhamento | `read_rules`, `ask_user`, `save_rule` |
-| 03 | Gerador | Planeja os cenários (CoT) e escreve o teste; confere os imports antes de entregar | `read_file`, `validate_imports` |
+| 03 | Gerador | Planeja os cenários (CoT) e escreve o teste; confere imports e tipos antes de entregar | `read_file`, `validate_imports`, `typecheck_test` |
 | 04 | Executor | Roda o Jest, interpreta a saída, decide se reexecuta (flaky/timeout) e diagnostica a categoria da falha | `run_jest`, `read_file` |
 | 05 | Reparador | Decide a correção, se testa a hipótese e se é defeito do componente | `read_file`, `run_jest`, `validate_imports`, `check_repair`, `write_test` |
 | 06 | Verificador | Interpreta mutantes sobreviventes e test smells e recomenda melhorias | `run_stryker`, `detect_smells`, `read_file` |
@@ -89,7 +89,7 @@ export interface LLMResponse {
   inputTokens: number;
   outputTokens: number;
 }
-export interface LLMClient { complete(req: LLMRequest): Promise<LLMResponse> }
+export interface LLMClient { complete(req: LLMRequest): Promise<LLMResponse>; readonly supportsJsonMode?: boolean }
 
 // ---- Domínio ----
 export interface ImportInfo {

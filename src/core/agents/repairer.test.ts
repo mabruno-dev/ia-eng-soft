@@ -101,6 +101,19 @@ describe('repairTest (agente 05)', () => {
     expect(onDisk()).toBe(BAD_ASYNC);
   });
 
+  it('(a) erro de formato na evidence pode ser corrigido duas vezes (maxRepairs = 2)', async () => {
+    const fake = new FakeLLM({
+      [REPAIRER_AGENT]: [
+        final('SUSPECTED_COMPONENT_BUG', 'x'),
+        final('SUSPECTED_COMPONENT_BUG', 'x', { evidence: 'mostrar Bem-vindo com o nome' }),
+        final('SUSPECTED_COMPONENT_BUG', 'x', { evidence: 'mostrar "Bem-vindo, <nome>!"' }),
+      ],
+    });
+    const r = await repairTest(base(fake, { rules: '- R3: após o login, mostrar "Bem-vindo, <nome>!"' }));
+    expect(fake.requestsFor(REPAIRER_AGENT)).toHaveLength(3);
+    expect(r).toMatchObject({ status: 'SUSPECTED_COMPONENT_BUG', evidence: 'mostrar "Bem-vindo, <nome>!"' });
+  });
+
   it('(a) evidência parafraseada (não literal) é rejeitada', async () => {
     const fake = new FakeLLM({
       [REPAIRER_AGENT]: [
@@ -153,7 +166,7 @@ describe('repairTest (agente 05)', () => {
   });
 
   it('REPAIRED insistente sem gravar vira GAVE_UP (o código não aceita a palavra do LLM)', async () => {
-    const fake = new FakeLLM({ [REPAIRER_AGENT]: [final('REPAIRED', 'corrigi'), final('REPAIRED', 'corrigi mesmo')] });
+    const fake = new FakeLLM({ [REPAIRER_AGENT]: [final('REPAIRED', 'corrigi'), final('REPAIRED', 'corrigi mesmo'), final('REPAIRED', 'juro')] });
     const r = await repairTest(base(fake));
     expect(r.status).toBe('GAVE_UP');
     expect(r.wrote).toBe(false);

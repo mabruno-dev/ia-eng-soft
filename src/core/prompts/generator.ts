@@ -25,7 +25,7 @@ Responda APENAS com um objeto JSON:
       "name": "frase curta em pt-BR que vai virar o título do it(...)",
       "kind": "render" | "interaction" | "validation" | "async" | "edge",
       "description": "o que preparar, o que fazer e o que verificar",
-      "mocks": ["especificadores de mockTargets que este cenário usa"],
+      "mocks": ["especificadores de mockTargets que este cenário usa (outros especificadores são descartados pelo código)"],
       "fromRules": ["ids das regras de negócio que originaram o cenário, ex.: R1"]
     }
   ]
@@ -47,7 +47,8 @@ O plano DEVE cobrir, quando aplicável ao componente:
 - validações,
 - estados assíncronos (loading, erro e sucesso, cada um como cenário),
 - casos de borda (limites, vazio, valores extremos).
-Sempre inclua pelo menos um cenário "render" e um "edge"; se o componente chama API, inclua cenários "async".
+Sempre inclua pelo menos um cenário "render" e, quando fizer sentido, um "edge"; se o componente chama API, inclua cenários "async".
+Casos de borda respeitam o contrato de tipos: nunca planeje "sem a prop X" para uma prop OBRIGATÓRIA (ex.: children: ReactNode); use um valor válido e vazio (children={null}, string vazia, lista vazia).
 
 # Atypical cases
 - Sem regras de negócio: "fromRules" é [] em todos os cenários. Nunca invente ids de regra.
@@ -73,19 +74,22 @@ Escreva o arquivo de teste completo (Jest + React Testing Library + @testing-lib
 
 # Regras obrigatórias
 1. Imports: use APENAS os especificadores de allowedImports e os pacotes de teste padrão ("react", "@testing-library/react", "@testing-library/user-event", "@testing-library/jest-dom"). Nunca invente caminhos de import, nem "ajuste" um especificador.
-2. Mocks: mocke exatamente os mockTargets, com jest.mock('<especificador exato>'), e configure o comportamento com jest.mocked(...). Não mocke outros módulos locais.
+2. Mocks: mocke os mockTargets de I/O (serviços de API/rede) com jest.mock('<especificador exato>') e configure o comportamento com jest.mocked(...). Não mocke outros módulos locais.
+   - Stores globais (zustand etc.) NÃO são mockados: use o store real e restaure o estado no beforeEach com useXStore.setState(initialState) (guarde o estado inicial com useXStore.getState() antes dos testes) e localStorage.clear().
+   - Contexts: renderize o componente dentro do Provider real importado de allowedImports.
 3. Queries: prefira getByRole/getByLabelText/getByText; use getByTestId só quando não houver papel ou rótulo acessível.
 4. Assíncrono: use findBy* ou waitFor para tudo que aparece depois de uma Promise; use userEvent.setup() e await nas interações.
 5. Estrutura: um único describe('<NomeDoComponente>', ...) envolvendo todos os testes; cada cenário do plano vira pelo menos um it(...), com o nome do cenário como título.
 6. Asserções reais sobre o comportamento (texto, papel, atributo, chamada do mock com argumentos). Proibido: expect(true), expect(1).toBe(1), asserções vazias, .skip, .only, xit, test.todo.
 7. Isolamento: resete mocks entre testes (beforeEach com mockReset/mockClear) e não dependa da ordem dos testes. Se houver estado global persistente (store, localStorage), restaure-o no beforeEach.
 8. Providers: se o componente precisa de Provider (Context), renderize-o dentro do Provider importado de allowedImports.
+9. Tipos: o arquivo precisa compilar no TypeScript estrito. NUNCA omita props obrigatórias. Para cenários de props "vazias", passe valores válidos para o tipo (ex.: children={null}, ''). Se um cenário só puder ser escrito violando o tipo, descarte-o — só cenários "edge" podem ser descartados (não escreva @ts-ignore, as any nem casts para burlar).
 
 # Output definition e Mode of interaction
 1. Escreva o rascunho completo do arquivo.
-2. ANTES de entregar, chame a ferramenta validate_imports com o código completo do rascunho.
-3. Se vier algo em "unresolved", corrija usando apenas allowedImports/mockTargets e valide de novo.
-4. Só então responda APENAS com o JSON final: {"code": "<conteúdo completo do arquivo de teste>"}.
+2. ANTES de entregar, chame validate_imports E typecheck_test com o código completo do rascunho (pode chamar as duas no mesmo passo).
+3. Se vier algo em "unresolved" ou erros de tipo em "diagnostics", corrija (só allowedImports/mockTargets; props com os tipos certos) e cheque de novo.
+4. Só então responda APENAS com o JSON final: {"code": "<conteúdo completo do arquivo de teste>"} — exatamente o código que passou no typecheck_test.
 Você pode usar read_file para conferir o código de um arquivo do workspace.
 
 # Atypical cases
@@ -144,7 +148,7 @@ export function codeUserPrompt(ctx: ContextResult, plan: TestPlan, rules?: strin
     renderContext(ctx),
     rules?.trim() ? `Regras de negócio:\n${rules.trim()}` : '',
     `Plano de cenários (${plan.scenarios.length}):\n${scenarios}`,
-    'Escreva o arquivo de teste, chame validate_imports no rascunho, corrija o que vier em unresolved e responda {"code": "..."}.',
+    'Escreva o arquivo de teste, chame validate_imports e typecheck_test no rascunho, corrija o que vier em unresolved/diagnostics e responda {"code": "..."}.',
   ]
     .filter(Boolean)
     .join('\n\n');

@@ -18,13 +18,14 @@ Como trabalhar:
    - SYNTAX_TYPE: erro de sintaxe ou de tipo TypeScript (TSxxxx) no teste.
    - UNKNOWN: nenhuma das anteriores.
    Resuma a causa provável em 1 a 3 frases, citando o teste e a mensagem relevante.
+   O "summary" é SEMPRE escrito em português do Brasil (mesmo que a saída do Jest esteja em inglês).
 
 Regras:
 - Os números (testes, falhas, cobertura) são lidos pelo código diretamente do run_jest; não os repita nem os invente.
 - flaky = true apenas se você observou resultados diferentes entre execuções da mesma suíte.
 
 Resposta final: quando terminar, responda APENAS com um objeto JSON (sem chamar ferramentas):
-{ "category": "IMPORT" | "MOCK" | "ASYNC" | "ASSERTION" | "SYNTAX_TYPE" | "UNKNOWN" | null, "summary": "1 a 3 frases", "flaky": false }
+{ "category": "IMPORT" | "MOCK" | "ASYNC" | "ASSERTION" | "SYNTAX_TYPE" | "UNKNOWN" | null, "summary": "1 a 3 frases em português do Brasil", "flaky": false }
 - category = null somente se a última execução passou (summary então descreve o sucesso brevemente).`;
 
 export function executorUserPrompt(ctx: ContextResult, testFilePath: string): string {

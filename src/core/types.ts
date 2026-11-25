@@ -26,7 +26,11 @@ export interface LLMResponse {
   inputTokens: number;
   outputTokens: number;
 }
-export interface LLMClient { complete(req: LLMRequest): Promise<LLMResponse> }
+export interface LLMClient {
+  complete(req: LLMRequest): Promise<LLMResponse>;
+  /** O provider impõe JSON estrito nativamente quando `jsonMode` é pedido (OpenAI: response_format json_object). */
+  readonly supportsJsonMode?: boolean;
+}
 
 // ---- Domínio ----
 export interface ImportInfo {
