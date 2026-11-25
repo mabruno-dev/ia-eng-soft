@@ -4,7 +4,7 @@ import { dirname, join, relative } from 'node:path';
 import * as vscode from 'vscode';
 import { type PipelineEvent, runFiles, runPipeline } from '../core/pipeline';
 import { formatEvent } from '../core/progressFormat';
-import { componentName, renderReport } from '../core/report';
+import { componentName, mutationLine, renderReport, suggestionLines } from '../core/report';
 import type { LLMClient, LLMRequest, PipelineConfig, RunRecord } from '../core/types';
 import { VSCodeAsker } from './vscodeAsker';
 import { listCopilotModels, runCopilotEvaluation } from './evaluation';
@@ -181,6 +181,8 @@ async function finish(workspaceRoot: string, record: RunRecord): Promise<void> {
   output.appendLine('');
   output.appendLine(`Status: ${record.status}${record.error ? ` — ${record.error}` : ''} · iterações: ${record.iterations} · branches: ${record.coverage.branches}%`);
   output.appendLine(`LLM: ${record.llm.calls} chamadas, ${record.llm.inputTokens}+${record.llm.outputTokens} tokens${record.llm.tokensEstimated ? ' (estimados)' : ''}${record.llm.costUsd ? ` · US$ ${record.llm.costUsd.toFixed(4)} (informado pelo provedor)` : ''} · ${(record.timings.totalMs / 1000).toFixed(1)} s`);
+  output.appendLine(mutationLine(record));
+  for (const s of suggestionLines(record)) output.appendLine(`  ${s.replace(/\n/g, '\n  ')}`);
   output.appendLine(`RunRecord: ${files.record}`);
   output.appendLine(`Trace: ${files.trace}`);
   output.appendLine(`Relatório: ${reportPath}`);
@@ -192,6 +194,7 @@ async function finish(workspaceRoot: string, record: RunRecord): Promise<void> {
 
   const openReport = 'Abrir relatório';
   const showLog = 'Ver log dos agentes';
+  const showSuggestions = 'Ver sugestões';
   let choice: string | undefined;
   if (record.status === 'SUSPECTED_COMPONENT_BUG') {
     const last = record.history?.at(-1);
@@ -208,14 +211,20 @@ async function finish(workspaceRoot: string, record: RunRecord): Promise<void> {
       showLog,
     );
   } else if (record.status === 'PASSED') {
+    const nSug = record.verification?.suggestions.length ?? 0;
+    const buttons = nSug ? [showSuggestions, openReport] : [openReport, showLog];
     choice = await vscode.window.showInformationMessage(
-      `ReacTest: ${STATUS_MSG.PASSED} (${record.iterations} iteração(ões) de reparo, branches ${record.coverage.branches}%).`,
-      openReport,
-      showLog,
+      `ReacTest: ${STATUS_MSG.PASSED} (${record.iterations} iteração(ões) de reparo, branches ${record.coverage.branches}%). ${mutationLine(record)}.`,
+      ...buttons,
     );
   } else {
     choice = await vscode.window.showErrorMessage(`ReacTest: ${STATUS_MSG[record.status]}${record.error ? ` — ${record.error}` : ''}.`, openReport, showLog);
   }
   if (choice === openReport) await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(reportPath));
   else if (choice === showLog) output.show(true);
+  else if (choice === showSuggestions) {
+    output.appendLine('\nSugestões do Verificador (casos que matariam mutantes sobreviventes; não aplicadas ao teste):');
+    for (const s of suggestionLines(record)) output.appendLine(`  ${s.replace(/\n/g, '\n  ')}`);
+    output.show(true);
+  }
 }

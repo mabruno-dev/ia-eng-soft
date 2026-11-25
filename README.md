@@ -9,12 +9,20 @@ Extensão do VS Code + CLI que gera testes Jest + React Testing Library por uma 
 ```
 npm run build
 npm test
-npm run cli -- <componente> --workspace <dir> [--no-heal] [--no-elicit] [--no-verify] [--max-iter 3] [--model gpt-4o] [--provider openai|claude-cli] [--answers eval/answers.json]
+npm run cli -- <componente> --workspace <dir> [--no-heal] [--no-elicit] [--no-verify] [--max-iter 3] [--model gpt-4o] [--provider openai|claude-cli] [--answers eval/answers.json] [--exclude-mutators StringLiteral]
 npm run eval -- [--only LoginForm] [--runs 1] [--resume [dir]]
 ```
 
 - **Modelo padrão:** `gpt-4o` (provider `openai`, chave em `OPENAI_API_KEY`). Troque com `--model`, a variável
   `OPENAI_MODEL` ou, na extensão, a configuração `reactest.model`.
+- **Verificador (mutação):** os 6 agentes estão implementados. Com `verify` ligado e a suíte **PASSED**, o
+  Verificador roda o Stryker do workspace só no arquivo do componente (`--mutate`), só com o teste gerado (jest,
+  `coverageAnalysis: perTest`, concorrência 2, timeout total de 300 s), com config/relatório/temp em
+  `.reactest/stryker/<runId>/` (ignorado pelo git). O score, os mortos e o total vêm do relatório JSON do Stryker;
+  o LLM só sugere até 3 casos ligados a mutantes sobreviventes reais (`RunRecord.verification.suggestions`), sem
+  alterar o teste. SUSPECTED_COMPONENT_BUG/FAILED não acionam o Verificador. Se o Stryker não rodar, a mutação fica
+  n/d e o run segue. Na avaliação, C1 mede a mutação sem sugestões. Se a mutação ficar lenta, desative mutators
+  com `--exclude-mutators StringLiteral`.
 - **Elicitação não interativa:** `--answers <arquivo.json>` (formato por componente, ver `eval/answers.json`).
 - **Avaliação:** um erro de infraestrutura (sem créditos/HTTP 429, chave recusada/HTTP 401, rede) aborta a avaliação
   sem gravar o run; retome com `npm run eval -- --resume <dir>` (runs com status ERROR são refeitos).

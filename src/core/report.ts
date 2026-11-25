@@ -12,6 +12,26 @@ const ms = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.ro
 const pct = (v: number) => `${Number.isInteger(v) ? v : v.toFixed(2)}%`;
 const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 
+/** "Mutação: score X% (killed/total), N sugestões" — ou o motivo de n/d. */
+export function mutationLine(record: RunRecord): string {
+  const m = record.mutation;
+  const n = record.verification?.suggestions.length ?? 0;
+  if (!m) {
+    const why = !record.config.verify ? 'Verificador desligado' : record.status !== 'PASSED' ? 'só é medida com a suíte passando' : record.verification?.error ?? 'Stryker não rodou';
+    return `Mutação: n/d (${why})`;
+  }
+  const detected = m.timeout ? `${m.killed} mortos + ${m.timeout} timeout` : `${m.killed}`;
+  return `Mutação: score ${pct(m.score)} (${detected}/${m.total ?? m.killed + m.survived + m.timeout}), ${n} sugestão(ões)`;
+}
+
+/** Sugestões do Verificador, uma por linha (vazio se não houver). */
+export function suggestionLines(record: RunRecord): string[] {
+  return (record.verification?.suggestions ?? []).map(
+    (s, i) => `${i + 1}. [mutante ${s.mutantId} · ${s.mutator} · linha ${s.line}] ${s.description}
+   → ${s.suggestedAssertion}`,
+  );
+}
+
 export function componentName(record: RunRecord): string {
   return record.component.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, '');
 }
@@ -54,6 +74,21 @@ export function renderReport(record: RunRecord): string {
     '| Statements | Branches | Functions | Lines |',
     '|---|---|---|---|',
     `| ${pct(c.statements)} | ${pct(c.branches)} | ${pct(c.functions)} | ${pct(c.lines)} |`,
+    '',
+    '## Mutação (Verificador)',
+    '',
+    mutationLine(record),
+    ...(record.mutation ? ['', `Sobreviventes: ${record.mutation.survived} · sem cobertura: ${record.mutation.noCoverage ?? 0} · timeout: ${record.mutation.timeout}`] : []),
+    ...(record.verification?.suggestions.length
+      ? [
+          '',
+          '| Mutante | Linha | Caso que falta | Asserção sugerida |',
+          '|---|---|---|---|',
+          ...record.verification.suggestions.map((s) => `| ${s.mutantId} (${s.mutator}) | ${s.line} | ${cell(s.description)} | \`${cell(s.suggestedAssertion)}\` |`),
+          '',
+          '_Sugestões não são aplicadas automaticamente ao teste._',
+        ]
+      : []),
     '',
     '## Custo',
     '',

@@ -9,6 +9,7 @@ import { ELICITATION_SYSTEM_PROMPT } from './elicitation';
 import { EXECUTOR_SYSTEM_PROMPT } from './executor';
 import { GENERATOR_CODE_SYSTEM_PROMPT, GENERATOR_PLAN_SYSTEM_PROMPT, planUserPrompt } from './generator';
 import { REPAIR_SYSTEM_PROMPT } from './repair';
+import { VERIFIER_SYSTEM_PROMPT, verifierUserPrompt } from './verifier';
 import type { ContextResult } from '../types';
 
 const REASONING_REQUEST = /racioc[ií]n|raciocine|passo a passo|step by step|chain.of.thought|\bCoT\b|justifi|explique|explicando|pense\b|think|\breasoning\b|\brationale\b|\bthoughts?\b|"analysis"/i;
@@ -26,6 +27,8 @@ describe('prompts sem pedido de raciocínio interno', () => {
     'generator.code': GENERATOR_CODE_SYSTEM_PROMPT,
     executor: EXECUTOR_SYSTEM_PROMPT,
     repairer: REPAIR_SYSTEM_PROMPT,
+    verifier: VERIFIER_SYSTEM_PROMPT,
+    'verifier (usuário)': verifierUserPrompt(ctx, 'src/X.test.tsx', "it('x', () => {});"),
     'generator.plan (usuário)': planUserPrompt(ctx, 'R1: algo'),
   };
   for (const [name, text] of Object.entries(prompts)) {

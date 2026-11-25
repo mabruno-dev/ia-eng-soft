@@ -80,6 +80,9 @@ export const metrics = {
   alignedToBehavior: (r: RunRecord) => (typeof r.alignedToBehavior === 'number' ? r.alignedToBehavior : undefined),
   modificationRate: (r: RunRecord) => (ok(r) && r.generated.lines > 0 ? r.modificationRate : undefined),
   mutationScore: (r: RunRecord) => r.mutation?.score,
+  mutationKilled: (r: RunRecord) => (r.mutation ? r.mutation.killed + r.mutation.timeout : undefined),
+  mutationTotal: (r: RunRecord) => r.mutation?.total,
+  suggestions: (r: RunRecord) => r.verification?.suggestions.length,
   branches: (r: RunRecord) => (ok(r) ? r.coverage.branches : undefined),
   lines: (r: RunRecord) => (ok(r) ? r.coverage.lines : undefined),
   questions: (r: RunRecord) => r.elicitation?.questions,
@@ -131,7 +134,7 @@ export function toCsv(runs: EvalRun[]): string {
     'runId', 'component', 'config', 'repetition', 'status', 'heal', 'elicit', 'verify', 'model', 'provider',
     'maxIterations', 'maxAgentSteps', 'iterations', 'rejectedRepairs', 'alignedToBehavior', 'generatedLines', 'finalLines', 'modificationRate',
     'coverageStatements', 'coverageBranches', 'coverageFunctions', 'coverageLines',
-    'mutationScore', 'mutationKilled', 'mutationSurvived', 'mutationTimeout', 'smellsCount', 'smells',
+    'mutationScore', 'mutationKilled', 'mutationSurvived', 'mutationTimeout', 'mutationNoCoverage', 'mutationTotal', 'verifierSuggestions', 'smellsCount', 'smells',
     'elicitationQuestions', 'elicitationAnswered', 'elicitationDerivedCases',
     'llmCalls', 'llmInputTokens', 'llmOutputTokens', 'totalMs',
     ...agentKeys.flatMap((a) => [`steps_${a}`, `toolCalls_${a}`]),
@@ -145,7 +148,7 @@ export function toCsv(runs: EvalRun[]): string {
       r.runId, r.component, config, repetition, r.status, r.config.heal, r.config.elicit, r.config.verify, r.config.model, r.config.provider,
       r.config.maxIterations, r.config.maxAgentSteps, r.iterations, r.rejectedRepairs, metrics.alignedToBehavior(r), r.generated.lines, r.final.lines, metrics.modificationRate(r),
       ran ? r.coverage.statements : undefined, ran ? r.coverage.branches : undefined, ran ? r.coverage.functions : undefined, ran ? r.coverage.lines : undefined,
-      r.mutation?.score, r.mutation?.killed, r.mutation?.survived, r.mutation?.timeout, r.smells?.length, r.smells?.join('; '),
+      r.mutation?.score, r.mutation?.killed, r.mutation?.survived, r.mutation?.timeout, r.mutation?.noCoverage, r.mutation?.total, r.verification?.suggestions.length, r.smells?.length, r.smells?.join('; '),
       r.elicitation?.questions, r.elicitation?.answered, r.elicitation?.derivedCases,
       r.llm.calls, r.llm.inputTokens, r.llm.outputTokens, r.timings.totalMs,
       ...agentKeys.flatMap((a) => [r.agents[a]?.steps, r.agents[a]?.toolCalls]),
@@ -257,10 +260,18 @@ export function renderSummary(runs: EvalRun[], meta: SummaryMeta): string {
 
   L.push('## RQ3 — Eficácia', '');
   L.push(...table(
-    ['Componente', 'Config.', 'Mutation score', 'Cobertura de branches', 'Cobertura de linhas'],
-    gs.map((g) => [g.label, g.config, fmtStat(s(g, metrics.mutationScore), { suffix: '%' }), fmtStat(s(g, metrics.branches), { suffix: '%' }), fmtStat(s(g, metrics.lines), { suffix: '%' })]),
+    ['Componente', 'Config.', 'Mutation score', 'Mutantes detectados', 'Mutantes válidos', 'Cobertura de branches', 'Cobertura de linhas', 'Sugestões do Verificador'],
+    gs.map((g) => [
+      g.label, g.config,
+      fmtStat(s(g, metrics.mutationScore), { suffix: '%' }),
+      fmtStat(s(g, metrics.mutationKilled)),
+      fmtStat(s(g, metrics.mutationTotal)),
+      fmtStat(s(g, metrics.branches), { suffix: '%' }),
+      fmtStat(s(g, metrics.lines), { suffix: '%' }),
+      fmtStat(s(g, metrics.suggestions)),
+    ]),
   ));
-  L.push('', '_Cobertura_ do componente-alvo, lida do Jest (suítes que não chegaram a rodar contam 0%). _Mutation score_ vem do Verificador (Stryker).', '');
+  L.push('', '_Cobertura_ do componente-alvo, lida do Jest (suítes que não chegaram a rodar contam 0%). _Mutation score_ vem do relatório do Stryker rodado pelo Verificador só no componente, com o teste final: (mortos + timeout) / válidos. Só é medido quando a suíte passou; **n/d** = suíte não passou, Verificador desligado ou Stryker não rodou. C1 mede a mutação sem pedir sugestões ao LLM.', '');
 
   L.push('## RQ4 — Regras de negócio', '');
   L.push(...table(

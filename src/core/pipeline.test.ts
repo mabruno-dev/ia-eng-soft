@@ -327,3 +327,100 @@ describe('runPipeline', () => {
     expect(err.error).toMatch(/^Error: disco cheio\n\s+at /); // stack completo
   });
 });
+
+describe('Verificador (06) na pipeline', () => {
+  const mutationResult = {
+    score: 75, killed: 3, survived: 1, timeout: 0, noCoverage: 0, total: 4,
+    survivors: [{ id: '7', mutator: 'EqualityOperator', line: 12, original: 'a > b', replacement: 'a >= b', status: 'Survived' as const }],
+    survivorsTotal: 1, reportFile: 'x', ms: 1,
+  };
+  const spyStryker = () => {
+    const calls: unknown[] = [];
+    return { calls, run: async (o: unknown) => (calls.push(o), mutationResult) };
+  };
+  const stages = (events: PipelineEvent[]) => events.filter((e) => e.type === 'stage-start').map((e) => (e as { stage: string }).stage);
+
+  it('PASSED + verify: o agente roda e o RunRecord ganha mutation (da ferramenta) e verification.suggestions', async () => {
+    const stryker = spyStryker();
+    const fake = new FakeLLM({
+      context: contextScript(),
+      ...generatorScript(GOOD),
+      verifier: [
+        call('run_mutation', { componentFile: COMPONENT }),
+        JSON.stringify({ suggestions: [{ mutantId: '7', line: 1, description: 'limite exato', suggestedAssertion: 'expect(x).toBe(1)' }, { mutantId: 'nope', description: 'd', suggestedAssertion: 'a' }] }),
+      ],
+    });
+    const events: PipelineEvent[] = [];
+    const r = await runPipeline({
+      typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ verify: true }), llm: fake,
+      execute: scriptedExecutor(ws.root, () => execs.pass()).execute, runMutation: stryker.run, onEvent: (e) => events.push(e),
+    });
+    expect(r.status).toBe('PASSED');
+    expect(stryker.calls).toHaveLength(1);
+    expect(r.mutation).toEqual({ score: 75, killed: 3, survived: 1, timeout: 0, noCoverage: 0, total: 4 });
+    expect(r.verification).toEqual({ suggestions: [{ mutantId: '7', line: 12, mutator: 'EqualityOperator', description: 'limite exato', suggestedAssertion: 'expect(x).toBe(1)' }] });
+    expect(r.agents.verifier).toEqual({ steps: 2, toolCalls: 1 });
+    expect(r.timings.perAgentMs.verifier).toBeGreaterThan(0);
+    expect(stages(events)).toEqual(['context', 'generator', 'write', 'heal', 'verifier', 'record']);
+    expect(savedRecord(r).mutation?.score).toBe(75);
+    expect(readFileSync(join(ws.root, TEST_FILE), 'utf8')).toBe(GOOD); // o Verificador não altera o teste
+    const trace = readFileSync(runFiles(ws.root, r.runId).trace, 'utf8');
+    expect(trace).toContain('"agent":"verifier"');
+  });
+
+  it("verifierMode 'measure' (C1): mede a mutação sem chamar o LLM do Verificador", async () => {
+    const stryker = spyStryker();
+    const fake = new FakeLLM({ context: contextScript(), ...generatorScript(GOOD) });
+    const r = await runPipeline({
+      typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ heal: false, verify: true }), llm: fake,
+      execute: scriptedExecutor(ws.root, () => execs.pass()).execute, runMutation: stryker.run, verifierMode: 'measure',
+    });
+    expect(r.mutation?.score).toBe(75);
+    expect(r.verification).toEqual({ suggestions: [] });
+    expect(fake.requestsFor('verifier')).toHaveLength(0);
+  });
+
+  it('SUSPECTED_COMPONENT_BUG (caso do Button) NÃO aciona o Verificador nem o Stryker', async () => {
+    const stryker = spyStryker();
+    const fake = new FakeLLM({
+      context: contextScript(),
+      ...generatorScript(GOOD),
+      [REPAIRER_AGENT]: [final('SUSPECTED_COMPONENT_BUG', 'O componente não mostra o nome.', { evidence: '<p role="status">Bem-vindo, {userName}!</p>' })],
+    });
+    const events: PipelineEvent[] = [];
+    const r = await runPipeline({
+      typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ verify: true }), llm: fake,
+      execute: scriptedExecutor(ws.root, () => execs.assertionFail()).execute, runMutation: stryker.run, onEvent: (e) => events.push(e),
+    });
+    expect(r.status).toBe('SUSPECTED_COMPONENT_BUG');
+    expect(stryker.calls).toHaveLength(0);
+    expect(stages(events)).not.toContain('verifier');
+    expect(r.mutation).toBeUndefined();
+    expect(r.verification).toBeUndefined();
+    expect(r.agents.verifier).toBeUndefined();
+  });
+
+  it('FAILED também não aciona; erro de infraestrutura do Stryker deixa mutation n/d sem derrubar o run', async () => {
+    const stryker = spyStryker();
+    const failed = await runPipeline({
+      typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ heal: false, verify: true }),
+      llm: new FakeLLM({ context: contextScript(), ...generatorScript(GOOD) }),
+      execute: scriptedExecutor(ws.root, () => execs.assertionFail()).execute, runMutation: stryker.run,
+    });
+    expect(failed.status).toBe('FAILED');
+    expect(stryker.calls).toHaveLength(0);
+
+    const { MutationInfraError } = await import('./tools/mutation');
+    const broken = await runPipeline({
+      typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ heal: false, verify: true }),
+      llm: new FakeLLM({ context: contextScript(), ...generatorScript(GOOD) }),
+      execute: scriptedExecutor(ws.root, () => execs.pass()).execute, verifierMode: 'measure',
+      runMutation: async () => {
+        throw new MutationInfraError('Stryker não encontrado no workspace');
+      },
+    });
+    expect(broken.status).toBe('PASSED');
+    expect(broken.mutation).toBeUndefined();
+    expect(broken.verification).toEqual({ suggestions: [], error: 'mutação n/d: Stryker não encontrado no workspace' });
+  });
+});

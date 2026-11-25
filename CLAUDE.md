@@ -10,7 +10,7 @@ Extensão do VS Code (com CLI compartilhando o mesmo núcleo) que gera testes **
 Componente → 01 Contexto → 02 Elicitação → 03 Gerador → 04 Executor ⇄ 05 Reparador (máx. N iterações) → 06 Verificador → suíte validada
 ```
 
-**Todos os agentes são agentes de IA**: cada um é um LLM com um papel (system prompt) e um conjunto de **ferramentas** que ele decide chamar, em loop, até produzir uma resposta final estruturada. A ordem entre os agentes é fixa e controlada pelo orquestrador (código); dentro de cada agente, quem decide quais ferramentas chamar e quando parar é o LLM.
+Os **6 agentes estão implementados**. **Todos os agentes são agentes de IA**: cada um é um LLM com um papel (system prompt) e um conjunto de **ferramentas** que ele decide chamar, em loop, até produzir uma resposta final estruturada. A ordem entre os agentes é fixa e controlada pelo orquestrador (código); dentro de cada agente, quem decide quais ferramentas chamar e quando parar é o LLM.
 
 | # | Agente | Papel (o que o LLM decide) | Ferramentas (código determinístico) |
 |---|--------|----------------------------|-------------------------------------|
@@ -19,7 +19,7 @@ Componente → 01 Contexto → 02 Elicitação → 03 Gerador → 04 Executor �
 | 03 | Gerador | Planeja os cenários (checklist de cobertura, sem pedir raciocínio) e escreve o teste; confere imports e tipos antes de entregar | `read_file`, `validate_imports`, `typecheck_test` |
 | 04 | Executor | Roda o Jest, interpreta a saída, decide se reexecuta (flaky/timeout) e diagnostica a categoria da falha | `run_jest`, `read_file` |
 | 05 | Reparador | Decide a correção, se testa a hipótese e se é defeito do componente | `read_file`, `run_jest`, `validate_imports`, `check_repair`, `write_test` |
-| 06 | Verificador | Interpreta mutantes sobreviventes e test smells e recomenda melhorias | `run_stryker`, `detect_smells`, `read_file` |
+| 06 | Verificador | Só com a suíte PASSED: mede com mutação (Stryker só no componente, só com o teste gerado) e sugere até 3 casos ligados a mutantes sobreviventes reais (conferido em código); não altera o teste | `run_mutation`, `read_source_lines`, `get_surviving_mutants` |
 
 ## Regras inegociáveis
 
@@ -49,7 +49,7 @@ src/
     pipeline.ts         # orquestrador (ordem fixa dos agentes)
     agent/runtime.ts    # runAgent: loop de tool calling + trace
     agents/             # context.ts elicitation.ts generator.ts executor.ts repairer.ts verifier.ts
-    tools/              # read_file, resolve_import, run_jest, check_repair, write_test, run_stryker...
+    tools/              # read_file, resolve_import, run_jest, check_repair, write_test, run_mutation...
     guardrail.ts        # checkRepair + classificação de falhas (fallback/validação)
     importValidator.ts  # validateImports
     metrics.ts          # MeteredLLM + RunRecord writer
@@ -158,7 +158,8 @@ export interface RunRecord {
   final: { code: string; lines: number };
   modificationRate: number;               // RQ2: linhas alteradas pelo healing / linhas geradas
   coverage: Coverage;                     // RQ3 (branches)
-  mutation?: { score: number; killed: number; survived: number; timeout: number }; // RQ3
+  mutation?: { score: number; killed: number; survived: number; timeout: number; noCoverage?: number; total?: number }; // RQ3
+  verification?: { suggestions: { mutantId: string; line: number; mutator: string; description: string; suggestedAssertion: string }[]; error?: string };
   smells?: string[];
   rejectedRepairs: number;                // RQ1: reparos indevidos barrados pelo guardrail
   alignedToBehavior: number;              // RQ1: reparos que alinharam a expectativa ao comportamento observado
@@ -177,7 +178,7 @@ export interface RunRecord {
 ```
 npm run build        # esbuild da extensão + tsc --noEmit
 npm test             # vitest
-npm run cli -- <componente> --workspace <dir> [--no-heal] [--no-elicit] [--no-verify] [--max-iter 3] [--model gpt-4o] [--provider openai|claude-cli] [--answers eval/answers.json]
+npm run cli -- <componente> --workspace <dir> [--no-heal] [--no-elicit] [--no-verify] [--max-iter 3] [--model gpt-4o] [--provider openai|claude-cli] [--answers eval/answers.json] [--exclude-mutators StringLiteral]
 npm run eval -- [--only LoginForm] [--runs 1] [--resume [dir]]
 ```
 

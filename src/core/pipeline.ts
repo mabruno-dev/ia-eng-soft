@@ -13,6 +13,8 @@ import { type HealIteration, healLoop, syncTestFile } from './healLoop';
 import { AgentMeter, MeteredLLM, newRunId, StageTimer, writeRunRecord } from './metrics';
 import { acquireTestFileLock } from './runLock';
 import type { RunJestFn } from './tools/jest';
+import { VERIFIER_MAX_STEPS, type VerifierMode, verifyTest } from './agents/verifier';
+import type { RunMutationFn } from './tools/mutation';
 import type { TypecheckFn } from './tools/typecheck';
 import { canonicalPath, getWorkspace } from './tools/workspace';
 import type { Asker, ContextResult, Coverage, ExecResult, LLMClient, PipelineConfig, RunRecord } from './types';
@@ -66,6 +68,12 @@ export interface RunPipelineOptions {
   execute?: (o: { ctx: ContextResult; testFilePath: string; iteration: number }) => Promise<{ exec: ExecResult; diagnosis: Diagnosis }>;
   /** Typechecker do Gerador injetável (padrão: ts-morph com o tsconfig do workspace). */
   typecheck?: TypecheckFn;
+  /** Verificador: 'full' (agente: mutação + sugestões, padrão) ou 'measure' (só mutação, sem LLM: baseline C1). */
+  verifierMode?: VerifierMode;
+  /** Stryker injetável (padrão: o do workspace). */
+  runMutation?: RunMutationFn;
+  /** Mutators desativados no Stryker (ex.: ['StringLiteral']). */
+  excludedMutations?: string[];
 }
 
 export function runFiles(workspaceRoot: string, runId: string) {
@@ -263,9 +271,40 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       partial = { ...partial, iterations: 0, rejectedRepairs: 0, alignedToBehavior: 0, modificationRate: 0, history: [] };
     }
 
-    // 06 — Verificador (ponto de extensão)
-    if (config.verify) {
-      await stage('verifier', 'verifier', async () => undefined, () => 'ainda não implementado (no-op)');
+    // 06 — Verificador: só com a suíte PASSANDO (o Stryker exige o teste verde). Não altera o teste.
+    if (config.verify && status === 'PASSED') {
+      const finalTestCode = finalCode;
+      try {
+        const v = await stage(
+          'verifier',
+          'verifier',
+          () =>
+            verifyTest({
+              ...common,
+              maxSteps: Math.max(config.maxAgentSteps, VERIFIER_MAX_STEPS),
+              ctx,
+              workspaceRoot,
+              testFilePath: tfp,
+              testCode: finalTestCode,
+              runId,
+              mode: opts.verifierMode ?? 'full',
+              ...(opts.runMutation ? { runMutation: opts.runMutation } : {}),
+              ...(opts.excludedMutations ? { excludedMutations: opts.excludedMutations } : {}),
+            }),
+          (v) =>
+            v.mutation
+              ? `mutação ${v.mutation.score}% (${v.mutation.killed + v.mutation.timeout}/${v.mutation.total}); ${v.suggestions.length} sugestão(ões)`
+              : `mutação n/d${v.error ? ` — ${v.error}` : ''}`,
+        );
+        if (v.mutation) {
+          const { score, killed, survived, timeout, noCoverage, total } = v.mutation;
+          partial.mutation = { score, killed, survived, timeout, noCoverage, total };
+        }
+        partial.verification = { suggestions: v.suggestions, ...(v.error ? { error: v.error } : {}) };
+      } catch (err) {
+        // O Verificador nunca derruba o run: mutação fica n/d.
+        partial.verification = { suggestions: [], error: errMsg(err) };
+      }
     }
 
     const record: RunRecord = {
@@ -281,6 +320,8 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       testFilePath: tfp,
       history: partial.history ?? [],
       ...(partial.elicitation ? { elicitation: partial.elicitation } : {}),
+      ...(partial.mutation ? { mutation: partial.mutation } : {}),
+      ...(partial.verification ? { verification: partial.verification } : {}),
     };
     return await finish(record);
   } catch (err) {

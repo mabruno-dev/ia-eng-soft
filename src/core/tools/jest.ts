@@ -132,7 +132,7 @@ export function parseJestJson(json: JestJson, coverage: Coverage, rawOutput: str
 
 // ---- Execução ----
 
-function killTree(pid: number | undefined): void {
+export function killTree(pid: number | undefined): void {
   if (!pid) return;
   if (process.platform === 'win32') {
     spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).on('error', () => undefined);

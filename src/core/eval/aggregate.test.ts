@@ -130,8 +130,21 @@ describe('renderSummary', () => {
   });
 
   it('RQ3: mutation n/d quando o Verificador não gravou nada; ERROR fica fora da cobertura', () => {
-    expect(row(md, 'RQ3', 'Button', 'C1')).toEqual(['Button', 'C1', ND, '20,0% ± 28,3%', '45,0% ± 63,6%']);
-    expect(row(md, 'RQ3', 'LoginForm', 'C2')).toEqual(['LoginForm', 'C2', ND, ND, ND]);
+    expect(row(md, 'RQ3', 'Button', 'C1')).toEqual(['Button', 'C1', ND, ND, ND, '20,0% ± 28,3%', '45,0% ± 63,6%', ND]);
+    expect(row(md, 'RQ3', 'LoginForm', 'C2')).toEqual(['LoginForm', 'C2', ND, ND, ND, ND, ND, ND]);
+  });
+
+  it('RQ3: mutation score, detectados/válidos e sugestões preenchidos onde o Verificador mediu; n/d onde não', () => {
+    const runs: EvalRun[] = [
+      { config: 'C2', repetition: 1, record: rec({ mutation: { score: 80, killed: 7, survived: 2, timeout: 1, noCoverage: 0, total: 10 }, verification: { suggestions: [{ mutantId: '3', line: 4, mutator: 'EqualityOperator', description: 'd', suggestedAssertion: 'a' }] } }) },
+      { config: 'C2', repetition: 2, record: rec({ mutation: { score: 60, killed: 6, survived: 4, timeout: 0, noCoverage: 0, total: 10 }, verification: { suggestions: [] } }) },
+      { config: 'C1', repetition: 1, record: rec({ status: 'FAILED' }) },
+    ];
+    const out = renderSummary(runs, meta);
+    expect(row(out, 'RQ3', 'Button', 'C2').slice(2, 5)).toEqual(['70,0% ± 14,1%', '7,0 ± 1,4', '10,0 ± 0,0']);
+    expect(row(out, 'RQ3', 'Button', 'C2')[7]).toBe('0,5 ± 0,7');
+    expect(row(out, 'RQ3', 'Button', 'C1').slice(2, 5)).toEqual([ND, ND, ND]);
+    expect(toCsv(runs).split('\n')[0]).toContain('mutationTotal');
   });
 
   it('RQ4: casos derivados quando existem, n/d caso contrário, Likert manual', () => {

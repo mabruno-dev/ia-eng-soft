@@ -105,7 +105,8 @@ export interface RunRecord {
   final: { code: string; lines: number };
   modificationRate: number;               // RQ2: linhas alteradas pelo healing / linhas geradas
   coverage: Coverage;                     // RQ3 (branches)
-  mutation?: { score: number; killed: number; survived: number; timeout: number }; // RQ3
+  mutation?: { score: number; killed: number; survived: number; timeout: number; noCoverage?: number; total?: number }; // RQ3 (Stryker; ausente = n/d)
+  verification?: { suggestions: VerifierSuggestion[]; error?: string }; // Verificador: sugestões (não alteram o teste)
   smells?: string[];
   rejectedRepairs: number;                // RQ1: reparos indevidos barrados pelo guardrail
   alignedToBehavior: number;              // RQ1: reparos que alinharam a expectativa ao comportamento observado (sem evidência de defeito)
@@ -117,6 +118,15 @@ export interface RunRecord {
   testFilePath?: string;                  // arquivo de teste gravado (relativo ao workspace)
   history?: RunIteration[];               // uma entrada por iteração de reparo
   error?: string;                         // mensagem quando status = 'ERROR'
+}
+
+/** Caso de teste sugerido pelo Verificador para matar um mutante sobrevivente (mutantId/line vêm do Stryker). */
+export interface VerifierSuggestion {
+  mutantId: string;
+  line: number;
+  mutator: string;
+  description: string;
+  suggestedAssertion: string;
 }
 
 export interface RunIteration {

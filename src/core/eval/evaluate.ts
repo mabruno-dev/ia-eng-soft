@@ -38,6 +38,8 @@ export interface EvaluateOptions {
   onEvent?: (e: PipelineEvent) => void;
   /** Injetável (testes). */
   runPipeline?: (o: RunPipelineOptions) => Promise<RunRecord>;
+  /** Stryker injetável (testes). */
+  runMutation?: RunPipelineOptions['runMutation'];
   /** Data exibida no summary (padrão: hoje). */
   date?: string;
 }
@@ -161,6 +163,9 @@ export async function evaluate(opts: EvaluateOptions): Promise<EvaluateResult> {
             llm: typeof opts.llm === 'function' ? opts.llm() : opts.llm,
             ...(asker ? { asker } : {}),
             ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+            // C1 (baseline) mede a mutação sem sugestões do LLM; C2 roda o agente Verificador completo.
+            verifierMode: label === 'C1' ? 'measure' : 'full',
+            ...(opts.runMutation ? { runMutation: opts.runMutation } : {}),
           });
           const infra = record.status === 'ERROR' ? classifyInfraError(record.error) : undefined;
           if (infra) throw new EvalInfraError(infra.kind, infra.label, record.error ?? '', component, label, repetition, outDir);

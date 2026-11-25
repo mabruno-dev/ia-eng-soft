@@ -3,6 +3,7 @@ import { Command, InvalidArgumentError, Option } from 'commander';
 import { CliAsker, FileAsker, NoopAsker } from './core/askers';
 import { AGENT_LABELS, type PipelineEvent, runFiles, runPipeline } from './core/pipeline';
 import { formatEvent } from './core/progressFormat';
+import { mutationLine, suggestionLines } from './core/report';
 import type { Asker, LLMClient, PipelineConfig, RunRecord } from './core/types';
 import { CLAUDE_CLI_DEFAULT_MODEL, CLAUDE_CLI_FALLBACK_MODEL, ClaudeCliClient } from './llm/claudeCli';
 import { OpenAIClient } from './llm/openai';
@@ -27,6 +28,8 @@ function printSummary(r: RunRecord, workspaceRoot: string): void {
   if (r.status === 'SUSPECTED_COMPONENT_BUG') console.log('             ⚠ o componente pode ter defeito; o teste NÃO foi alterado.');
   console.log(`Iterações:   ${r.iterations} (reparos recusados pelo guardrail: ${r.rejectedRepairs}; alinhados ao comportamento: ${r.alignedToBehavior ?? 0}; modificação: ${(r.modificationRate * 100).toFixed(1)}%)`);
   console.log(`Cobertura:   statements ${c.statements}% · branches ${c.branches}% · functions ${c.functions}% · lines ${c.lines}%`);
+  console.log(mutationLine(r).replace(/^Mutação: /, 'Mutação:     '));
+  for (const s of suggestionLines(r)) console.log(`  ${s.replace(/\n/g, '\n  ')}`);
   console.log(`LLM:         ${r.llm.calls} chamadas · ${r.llm.inputTokens} tokens de entrada · ${r.llm.outputTokens} de saída${r.llm.tokensEstimated ? ' (estimados)' : ''}${r.llm.costUsd ? ` · US$ ${r.llm.costUsd.toFixed(4)}` : ''}`);
   console.log('Agentes:');
   for (const [a, s] of Object.entries(r.agents)) {
@@ -53,6 +56,7 @@ interface CliOptions {
   provider: PipelineConfig['provider'];
   fallbackModel: string;
   answers?: string;
+  excludeMutators?: string[];
   maxQuestions: number;
 }
 
@@ -69,6 +73,7 @@ const program = new Command()
   .option('--model <model>', `modelo do LLM (padrão: ${DEFAULT_MODEL}; com --provider claude-cli: ${CLAUDE_CLI_DEFAULT_MODEL})`, DEFAULT_MODEL)
   .addOption(new Option('--provider <provider>', 'provedor do LLM').choices(['openai', 'vscode', 'claude-cli']).default('openai'))
   .option('--fallback-model <model>', 'claude-cli: modelo usado se o filtro de segurança recusar o modelo principal duas vezes ("" desativa)', CLAUDE_CLI_FALLBACK_MODEL)
+  .option('--exclude-mutators <lista>', 'Verificador: mutators do Stryker a desativar, separados por vírgula (ex.: StringLiteral)', (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean))
   .option('--answers <arquivo.json>', 'respostas da elicitação (modo não interativo; casa por palavras-chave por componente)')
   .option('--max-questions <n>', 'máximo de perguntas da elicitação', int('--max-questions', 0), 5)
   .action(async (component: string, opts: CliOptions) => {
@@ -94,7 +99,7 @@ const program = new Command()
     };
     console.log(`ReacTest-Agent · ${componentPath} · ${opts.provider}/${opts.model} · heal=${config.heal} elicit=${config.elicit} verify=${config.verify} · max-iter=${config.maxIterations}`);
 
-    const record = await runPipeline({ workspaceRoot, componentPath, config, llm, ...(asker ? { asker } : {}), maxQuestions: opts.maxQuestions, onEvent });
+    const record = await runPipeline({ workspaceRoot, componentPath, config, llm, ...(asker ? { asker } : {}), maxQuestions: opts.maxQuestions, ...(opts.excludeMutators?.length ? { excludedMutations: opts.excludeMutators } : {}), onEvent });
     printSummary(record, workspaceRoot);
     process.exitCode = record.status === 'PASSED' ? 0 : 1;
   });
