@@ -64,3 +64,43 @@ export async function chooseModel<M extends ModelInfo>(
 
 /** Linha de listagem: id, family, name e maxInputTokens. */
 export const formatModel = (m: ModelInfo) => `${m.id.padEnd(28)} family=${m.family.padEnd(20)} name=${m.name} · maxInputTokens=${m.maxInputTokens}`;
+
+// ---------------------------------------------------------------------------
+// Escolha interativa (QuickPick) na avaliação
+// ---------------------------------------------------------------------------
+
+/** Família "mini" (ex.: gpt-4o-mini, o4-mini): recusada na avaliação salvo reactest.allowMiniModels. */
+export const isMiniModel = (m: Pick<ModelInfo, 'family' | 'id'>) => /mini/i.test(m.family) || /mini/i.test(m.id);
+
+/** Motivo de recusa do modelo para a avaliação, ou undefined se permitido. */
+export function modelRefusal(m: Pick<ModelInfo, 'family' | 'id'>, allowMini: boolean): string | undefined {
+  return !allowMini && isMiniModel(m) ? `família "${m.family}" é "mini" (habilite reactest.allowMiniModels para permitir)` : undefined;
+}
+
+export interface ModelPickItem<M extends ModelInfo> {
+  model: M;
+  label: string;
+  description: string;
+  detail: string;
+  /** Pode ser escolhido (passou no teste de tool calling e não é recusado). */
+  selectable: boolean;
+  reason?: string;
+}
+
+/** Itens do QuickPick: family, se passou no teste de tool calling e se é recusado (mini). Selecionáveis primeiro. */
+export function modelPickItems<M extends ModelInfo>(models: M[], probes: Map<string, ToolProbe>, allowMini: boolean): ModelPickItem<M>[] {
+  const items = models.map((m): ModelPickItem<M> => {
+    const refusal = modelRefusal(m, allowMini);
+    const probe = probes.get(m.id);
+    const reason = refusal ?? (probe && !probe.ok ? `tool calling NÃO suportado${probe.error ? `: ${probe.error}` : ''}` : probe ? undefined : 'não testado');
+    return {
+      model: m,
+      label: `${reason ? '$(circle-slash)' : '$(check)'} ${m.family}`,
+      description: `${m.id} · ${refusal ? 'recusado (mini)' : probe?.ok ? 'tool calling OK' : probe ? 'tool calling NÃO suportado' : 'não testado'}`,
+      detail: `${m.name} · maxInputTokens=${m.maxInputTokens}${reason ? ` — ${reason}` : ''}`,
+      selectable: !reason,
+      ...(reason ? { reason } : {}),
+    };
+  });
+  return [...items.filter((i) => i.selectable), ...items.filter((i) => !i.selectable)];
+}

@@ -69,6 +69,7 @@ export function findJestBin(workspaceRoot: string): string | undefined {
 
 interface JestJson {
   success?: boolean;
+  numTotalTestSuites?: number;
   numTotalTests?: number;
   numFailedTests?: number;
   numRuntimeErrorTestSuites?: number;
@@ -145,6 +146,23 @@ function killTree(pid: number | undefined): void {
         /* já terminou */
       }
     }
+  }
+}
+
+const NO_TESTS_RE = /No tests found/i;
+export const NO_TESTS_FOUND_PREFIX = 'O Jest não encontrou o arquivo de teste (No tests found)';
+
+export const noTestsFoundMessage = (testAbs: string, root: string) =>
+  `${NO_TESTS_FOUND_PREFIX}: ${testAbs}. Isso não é falha do componente nem do teste: confira o caminho do workspace e o rootDir/roots/testMatch do Jest (cwd: ${root}).`;
+
+/** A execução não chegou a descobrir o arquivo de teste. */
+export const isNoTestsFound = (exec: ExecResult) => !!exec.suiteError?.startsWith(NO_TESTS_FOUND_PREFIX);
+
+/** "No tests found": erro de infraestrutura (a pipeline termina com ERROR, nunca FAILED). */
+export class JestNoTestsFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'JestNoTestsFoundError';
   }
 }
 
@@ -243,6 +261,19 @@ export async function runJest(workspaceRoot: string, args: RunJestArgs, opts: Ru
         numFailed: 0,
         failures: [],
         suiteError: `O Jest terminou sem produzir o relatório JSON. Saída:\n${clip(rawOutput, 4000)}`,
+        coverage: { ...ZERO_COVERAGE },
+        rawOutput,
+      };
+    }
+
+    // Descoberta falhou: o Jest não achou o arquivo (caminho/rootDir), não é falha do teste nem do componente.
+    if (json.numTotalTestSuites === 0 || NO_TESTS_RE.test(rawOutput)) {
+      return {
+        passed: false,
+        numTests: 0,
+        numFailed: 0,
+        failures: [],
+        suiteError: noTestsFoundMessage(testAbs, ws.root),
         coverage: { ...ZERO_COVERAGE },
         rawOutput,
       };

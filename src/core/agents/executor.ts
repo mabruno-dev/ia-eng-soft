@@ -5,7 +5,7 @@ import { type CrossCheck, crossCheckCategory } from '../guardrail';
 import type { AgentMeter } from '../metrics';
 import { EXECUTOR_MAX_RERUNS, EXECUTOR_SYSTEM_PROMPT, executorUserPrompt } from '../prompts/executor';
 import { readFileTool } from '../tools/code';
-import { type RunJestArgs, type RunJestFn, runJestTool } from '../tools/jest';
+import { isNoTestsFound, JestNoTestsFoundError, type RunJestArgs, type RunJestFn, runJestTool } from '../tools/jest';
 import { getWorkspace } from '../tools/workspace';
 import type { ContextResult, ExecResult, FailureCategory, LLMClient } from '../types';
 
@@ -94,6 +94,10 @@ export async function executeTests(opts: ExecuteTestsOptions): Promise<ExecuteTe
     ...(opts.trace ? { trace: opts.trace } : {}),
     ...(opts.meter ? { meter: opts.meter } : {}),
   });
+
+  // "No tests found" é erro de infraestrutura (caminho/rootDir do Jest): a pipeline termina com ERROR, não FAILED.
+  const noTests = execs.find(isNoTestsFound);
+  if (noTests) throw new JestNoTestsFoundError(noTests.suiteError!);
 
   const exec = execs.at(-1)!;
   const crossCheck = crossCheckCategory(run.output.category, exec);

@@ -3,7 +3,7 @@
 // (429/conexão) antes de lançar. Para o Copilot (vscode.lm), withRateLimitRetry faz as
 // retentativas — então um erro destes que chega à pipeline é persistente.
 
-export type InfraErrorKind = 'quota' | 'auth' | 'rate_limit' | 'network' | 'no_model';
+export type InfraErrorKind = 'quota' | 'auth' | 'rate_limit' | 'network' | 'no_model' | 'jest_discovery';
 
 export interface InfraError {
   kind: InfraErrorKind;
@@ -12,6 +12,7 @@ export interface InfraError {
 }
 
 const RULES: [InfraErrorKind, string, RegExp][] = [
+  ['jest_discovery', 'o Jest não encontrou o arquivo de teste (No tests found) — confira o caminho do workspace/rootDir do Jest', /No tests found|Jest não encontrou o arquivo de teste/i],
   ['quota', 'sem créditos/cota no provedor (HTTP 429 insufficient_quota / quota)', /insufficient_quota|exceeded your current quota|billing details|out of credits|\bquota\b/i],
   ['no_model', 'nenhum modelo de linguagem disponível', /Nenhum modelo de linguagem do Copilot|no (?:language )?models? (?:are )?available/i],
   ['auth', 'acesso ao modelo recusado (HTTP 401 / sem permissão)', /(^|:\s*)401\s|incorrect api key|invalid api key|invalid_api_key|OPENAI_API_KEY não definida|NoPermissions/i],

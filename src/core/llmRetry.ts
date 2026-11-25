@@ -37,3 +37,44 @@ export function withRateLimitRetry(inner: LLMClient, opts: RetryOptions = {}): L
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Resposta vazia (sem texto e sem toolCalls): o Copilot às vezes devolve um stream vazio.
+// ---------------------------------------------------------------------------
+
+export const EMPTY_RESPONSE_RETRIES = 2;
+
+export class EmptyResponseError extends Error {
+  constructor(tag: string, attempts: number) {
+    super(`O modelo devolveu resposta vazia (sem texto e sem chamadas de ferramenta) em ${attempts} tentativas (agente "${tag}").`);
+    this.name = 'EmptyResponseError';
+  }
+}
+
+const isEmptyResponse = (r: LLMResponse) => !r.text.trim() && !r.toolCalls?.length;
+
+/**
+ * Repete a chamada até `retries` vezes quando a resposta vem vazia; depois lança EmptyResponseError.
+ * Os tokens das tentativas descartadas são somados à resposta final (o consumo do plano é real).
+ */
+export function withEmptyResponseRetry(
+  inner: LLMClient,
+  opts: { retries?: number; onRetry?: (info: { attempt: number; tag: string }) => void } = {},
+): LLMClient {
+  const retries = opts.retries ?? EMPTY_RESPONSE_RETRIES;
+  return {
+    ...(inner.supportsJsonMode !== undefined ? { supportsJsonMode: inner.supportsJsonMode } : {}),
+    async complete(req: LLMRequest): Promise<LLMResponse> {
+      let inputTokens = 0;
+      let outputTokens = 0;
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        if (attempt > 0) opts.onRetry?.({ attempt, tag: req.tag });
+        const r = await inner.complete(req);
+        inputTokens += r.inputTokens;
+        outputTokens += r.outputTokens;
+        if (!isEmptyResponse(r)) return { ...r, inputTokens, outputTokens };
+      }
+      throw new EmptyResponseError(req.tag, retries + 1);
+    },
+  };
+}

@@ -82,6 +82,11 @@
           "default": "",
           "description": "Modelo. Copilot: família (ex.: gpt-4o, claude-sonnet-4); vazio = primeiro disponível. OpenAI: nome do modelo; vazio = gpt-4o."
         },
+        "reactest.allowMiniModels": {
+          "type": "boolean",
+          "default": false,
+          "description": "Permite modelos de família \"mini\" (ex.: gpt-4o-mini) na avaliação com o Copilot."
+        },
         "reactest.maxIterations": {
           "type": "integer",
           "default": 3,

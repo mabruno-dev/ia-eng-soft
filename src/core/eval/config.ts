@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { canonicalPath } from '../tools/workspace';
 import type { PipelineConfig } from '../types';
 
 /** `eval/config.json`. Caminhos relativos são resolvidos a partir de `baseDir` (padrão: cwd). */
@@ -52,7 +53,8 @@ export function loadEvalConfig(path: string, baseDir: string = process.cwd()): E
   const cfg = parsed.data;
   return {
     ...cfg,
-    workspace: resolve(baseDir, cfg.workspace),
+    // Forma real do disco (drive em maiúscula): cwd/rootDir do Jest — ver canonicalPath.
+    workspace: canonicalPath(resolve(baseDir, cfg.workspace)),
     ...(cfg.answersFile ? { answersFile: resolve(baseDir, cfg.answersFile) } : {}),
   };
 }

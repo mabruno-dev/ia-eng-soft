@@ -14,7 +14,7 @@ import { AgentMeter, MeteredLLM, newRunId, StageTimer, writeRunRecord } from './
 import { acquireTestFileLock } from './runLock';
 import type { RunJestFn } from './tools/jest';
 import type { TypecheckFn } from './tools/typecheck';
-import { getWorkspace } from './tools/workspace';
+import { canonicalPath, getWorkspace } from './tools/workspace';
 import type { Asker, ContextResult, Coverage, ExecResult, LLMClient, PipelineConfig, RunRecord } from './types';
 
 export type Stage = 'context' | 'elicitation' | 'generator' | 'write' | 'heal' | 'executor' | 'verifier' | 'record';
@@ -111,7 +111,9 @@ class ObservedTraceWriter extends TraceWriter {
  * Nunca lança: qualquer erro vira status 'ERROR' com o registro gravado.
  */
 export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> {
-  const { workspaceRoot, componentPath, config } = opts;
+  const { componentPath, config } = opts;
+  // Forma real do disco (drive em maiúscula): é o cwd/rootDir do Jest e a raiz do typecheck.
+  const workspaceRoot = existsSync(opts.workspaceRoot) ? canonicalPath(opts.workspaceRoot) : opts.workspaceRoot;
   const runId = opts.runId ?? newRunId();
   const emit = (e: PipelineEvent) => {
     try {

@@ -17,6 +17,7 @@ const HINTS: Record<EvalInfraError['kind'], string> = {
   rate_limit: 'Aguarde alguns minutos (ou aumente o limite da conta) antes de retomar.',
   network: 'Verifique a conexão com a internet / OPENAI_BASE_URL antes de retomar.',
   no_model: 'Nenhum modelo disponível no provedor: confira o modelo configurado antes de retomar.',
+  jest_discovery: 'Confira o caminho do workspace (letra do drive, links) e o rootDir/roots/testMatch do Jest no app antes de retomar.',
 };
 
 const int = (name: string) => (v: string) => {

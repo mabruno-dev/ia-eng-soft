@@ -7,7 +7,7 @@ import { loadEvalConfig } from '../core/eval/config';
 import { EvalInfraError, evaluate, type EvalProgress } from '../core/eval/evaluate';
 import { classifyInfraError } from '../core/llmErrors';
 import { withRateLimitRetry } from '../core/llmRetry';
-import { chooseModel, formatModel, type ModelChoice, type ModelInfo } from '../core/modelChoice';
+import { candidateModels, chooseModel, formatModel, type ModelChoice, type ModelInfo, modelPickItems, modelRefusal, type ToolProbe } from '../core/modelChoice';
 import { runPipeline, type RunPipelineOptions } from '../core/pipeline';
 import { formatEvent } from '../core/progressFormat';
 import type { LLMClient, LLMRequest, RunRecord } from '../core/types';
@@ -156,15 +156,10 @@ export async function runCopilotEvaluation(context: vscode.ExtensionContext, out
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'ReacTest: avaliação (Copilot)', cancellable: true },
       async (progress, token) => {
-        // 1) Modelo: reactest.model (family) ou o primeiro que passar no teste de tool calling.
+        // 1) Modelo: reactest.model (family) ou escolha explícita no QuickPick (nunca automática).
         progress.report({ message: 'escolhendo o modelo do Copilot…' });
-        const models = await copilotModels();
-        const pref = preferredModel();
-        const choice = await chooseModel(models, pref, (m) => probeToolCalling(m, token));
-        logAttempts(output, choice);
-        if (!choice.ok) throw new EvalSetupError(choice.error);
-        const model = choice.model;
-        output.appendLine(`Modelo: ${model.id} (family ${model.family}) · provider vscode`);
+        const model = await selectEvalModel(output, token);
+        output.appendLine(`▶ Modelo usado nesta avaliação: ${model.id} · family ${model.family} · ${model.name} · provider vscode`);
 
         const llm = () =>
           withRateLimitRetry(cancellable(new VSCodeLmClient({ model, cancellationToken: token }), token), {
@@ -252,5 +247,50 @@ export async function runCopilotEvaluation(context: vscode.ExtensionContext, out
   }
 }
 
-/** Falha antes do 1º run (sem modelo / sem tool calling). */
+/**
+ * Modelo da avaliação. Com reactest.model: essa família (precisa passar no teste de tool calling).
+ * Vazio: testa os modelos e mostra um QuickPick (family + resultado do teste); a escolha é gravada em
+ * reactest.model (configuração global). Famílias "mini" são recusadas salvo reactest.allowMiniModels.
+ */
+async function selectEvalModel(output: vscode.OutputChannel, token: vscode.CancellationToken): Promise<CopilotModel> {
+  const cfg = vscode.workspace.getConfiguration('reactest');
+  const allowMini = cfg.get<boolean>('allowMiniModels', false);
+  const models = await copilotModels();
+  if (!models.length) throw new EvalSetupError('Nenhum modelo de linguagem do Copilot está disponível (GitHub Copilot Chat instalado e autenticado?).');
+  const pref = preferredModel();
+
+  if (pref) {
+    const cands = candidateModels(models, pref);
+    const refused = cands.find((m) => modelRefusal(m, allowMini));
+    if (refused) throw new EvalSetupError(`Modelo recusado: ${modelRefusal(refused, allowMini)}. Ajuste reactest.model.`);
+    output.appendLine(`reactest.model = "${pref}"`);
+    const choice = await chooseModel(models, pref, (m) => probeToolCalling(m, token));
+    logAttempts(output, choice);
+    if (!choice.ok) throw new EvalSetupError(choice.error);
+    return choice.model;
+  }
+
+  output.appendLine('reactest.model vazio: testando tool calling nos modelos do Copilot para você escolher…');
+  const probes = new Map<string, ToolProbe>();
+  for (const m of models) {
+    if (modelRefusal(m, allowMini)) continue; // não gasta requisição com modelo recusado
+    if (token.isCancellationRequested) throw new Error(CANCELLED);
+    const r = await probeToolCalling(m, token);
+    probes.set(m.id, r);
+    output.appendLine(`  ${r.ok ? '✓' : '✗'} ${m.id} (${m.family}): ${r.ok ? 'tool calling OK' : `tool calling NÃO suportado — ${r.error ?? ''}`}`);
+  }
+  const items = modelPickItems(models, probes, allowMini);
+  const pick = await vscode.window.showQuickPick(
+    items.map((i) => ({ label: i.label, description: i.description, detail: i.detail, item: i })),
+    { title: 'ReacTest: modelo do Copilot para a avaliação', placeHolder: 'Escolha a família (a escolha é gravada em reactest.model)', ignoreFocusOut: true, matchOnDescription: true },
+  );
+  if (!pick) throw new Error(CANCELLED);
+  if (!pick.item.selectable) throw new EvalSetupError(`Modelo ${pick.item.model.family} recusado: ${pick.item.reason}.`);
+  const chosen = pick.item.model;
+  await cfg.update('model', chosen.family, vscode.ConfigurationTarget.Global);
+  output.appendLine(`reactest.model ← "${chosen.family}" (gravado nas configurações globais)`);
+  return chosen;
+}
+
+/** Falha antes do 1º run (sem modelo / sem tool calling / modelo recusado). */
 class EvalSetupError extends Error {}

@@ -1,6 +1,7 @@
 // Único arquivo fora de src/extension autorizado a importar `vscode`.
 // Tool calling (LanguageModelChatTool / ToolCallPart / ToolResultPart) exige VS Code >= 1.95.
 import * as vscode from 'vscode';
+import { withEmptyResponseRetry } from '../core/llmRetry';
 import type { LLMClient, LLMRequest, LLMResponse, ToolCall } from '../core/types';
 
 export interface VSCodeLmClientOptions {
@@ -35,7 +36,14 @@ export class VSCodeLmClient implements LLMClient {
     return model;
   }
 
-  async complete(req: LLMRequest): Promise<LLMResponse> {
+  /** Resposta vazia do Copilot (sem texto e sem toolCalls): até 2 novas tentativas antes de lançar. */
+  private readonly retrying = withEmptyResponseRetry({ complete: (req) => this.completeOnce(req) });
+
+  complete(req: LLMRequest): Promise<LLMResponse> {
+    return this.retrying.complete(req);
+  }
+
+  private async completeOnce(req: LLMRequest): Promise<LLMResponse> {
     const model = await this.getModel();
     const messages = toVSCodeMessages(req);
 

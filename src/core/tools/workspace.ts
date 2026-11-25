@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { Project, ts, type SourceFile } from 'ts-morph';
@@ -14,6 +14,23 @@ export class WorkspaceError extends Error {
 }
 
 const toPosix = (p: string) => p.split(sep).join('/');
+
+/** Letra do drive em maiúscula (Windows): "c:\x" → "C:\x". */
+export const upperDriveLetter = (p: string) => p.replace(/^([a-z]):/, (_m, d: string) => `${d.toUpperCase()}:`);
+
+/**
+ * Forma real do caminho no disco (fs.realpathSync.native: caixa real e letra do drive em maiúscula).
+ * Dentro do VS Code o caminho chega como "c:\..."; o Jest no Windows não acha os testes com
+ * --runTestsByPath quando rootDir/cwd e o arquivo divergem na caixa do drive ("No tests found").
+ */
+export function canonicalPath(p: string, realpath: (p: string) => string = realpathSync.native): string {
+  const abs = resolve(p);
+  try {
+    return upperDriveLetter(realpath(abs));
+  } catch {
+    return upperDriveLetter(abs); // ainda não existe: ao menos o drive normalizado
+  }
+}
 const isFile = (p: string) => {
   try {
     return statSync(p).isFile();
@@ -50,7 +67,7 @@ export class Workspace {
   private readonly compilerOptions: ts.CompilerOptions;
 
   constructor(root: string) {
-    this.root = resolve(root);
+    this.root = canonicalPath(root);
     if (!existsSync(this.root)) throw new WorkspaceError(`Workspace não encontrado: ${this.root}`);
 
     this.compilerOptions = { jsx: ts.JsxEmit.ReactJSX, allowJs: true };
@@ -93,7 +110,8 @@ export class Workspace {
     if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
       throw new WorkspaceError(`Caminho fora do workspace não é permitido: ${p}`);
     }
-    return full;
+    // Sempre com o prefixo canônico da raiz (um absoluto "c:\..." vira "C:\...").
+    return rel ? join(this.root, rel) : this.root;
   }
 
   /** Caminho relativo à raiz, com '/'. */
@@ -186,7 +204,7 @@ export class Workspace {
 const cache = new Map<string, Workspace>();
 /** Workspace em cache por raiz (o tsconfig/package.json são lidos uma vez). */
 export function getWorkspace(root: string): Workspace {
-  const key = resolve(root);
+  const key = canonicalPath(root);
   let ws = cache.get(key);
   if (!ws) cache.set(key, (ws = new Workspace(key)));
   return ws;
