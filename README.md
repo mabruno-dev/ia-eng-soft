@@ -18,3 +18,9 @@ npm run eval -- [--only LoginForm] [--runs 1] [--resume [dir]]
 - **Elicitação não interativa:** `--answers <arquivo.json>` (formato por componente, ver `eval/answers.json`).
 - **Avaliação:** um erro de infraestrutura (sem créditos/HTTP 429, chave recusada/HTTP 401, rede) aborta a avaliação
   sem gravar o run; retome com `npm run eval -- --resume <dir>` (runs com status ERROR são refeitos).
+- **Avaliação com o Copilot (sem créditos de API):** na Extension Development Host (F5), rode
+  "ReacTest: Listar modelos do Copilot" (lista os modelos e testa tool calling) e depois
+  "ReacTest: Rodar avaliação (Copilot)". Lê `eval/config.json`/`eval/answers.json` da raiz do repo, grava em
+  `eval/results/<data-hora>` e mostra os tokens por run e acumulados. O modelo vem de `reactest.model`
+  (family do Copilot); vazio = primeiro modelo que passar no teste de tool calling. Limite de taxa: novas tentativas
+  após 20 s, 60 s e 120 s; cota/sem modelo/limite persistente abortam sem gravar o run.

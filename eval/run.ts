@@ -16,6 +16,7 @@ const HINTS: Record<EvalInfraError['kind'], string> = {
   auth: 'Confira a variável OPENAI_API_KEY (chave válida e ativa) antes de retomar.',
   rate_limit: 'Aguarde alguns minutos (ou aumente o limite da conta) antes de retomar.',
   network: 'Verifique a conexão com a internet / OPENAI_BASE_URL antes de retomar.',
+  no_model: 'Nenhum modelo disponível no provedor: confira o modelo configurado antes de retomar.',
 };
 
 const int = (name: string) => (v: string) => {

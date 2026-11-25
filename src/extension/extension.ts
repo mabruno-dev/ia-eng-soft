@@ -7,6 +7,7 @@ import { formatEvent } from '../core/progressFormat';
 import { componentName, renderReport } from '../core/report';
 import type { LLMClient, LLMRequest, PipelineConfig, RunRecord } from '../core/types';
 import { VSCodeAsker } from './vscodeAsker';
+import { listCopilotModels, runCopilotEvaluation } from './evaluation';
 import { OpenAIClient } from '../llm/openai';
 import { VSCodeLmClient } from '../llm/vscodeLm';
 
@@ -23,6 +24,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('reactest.generate', (uri?: vscode.Uri) => generate(context, uri)),
     vscode.commands.registerCommand('reactest.setOpenAIKey', () => setOpenAIKey(context)),
     vscode.commands.registerCommand('reactest.showOutput', () => output.show(true)),
+    vscode.commands.registerCommand('reactest.listCopilotModels', () => listCopilotModels(output)),
+    vscode.commands.registerCommand('reactest.runEvaluation', () => runCopilotEvaluation(context, output)),
   );
 }
 

@@ -27,6 +27,16 @@
         "command": "reactest.showOutput",
         "title": "Mostrar log dos agentes",
         "category": "ReacTest"
+      },
+      {
+        "command": "reactest.listCopilotModels",
+        "title": "Listar modelos do Copilot",
+        "category": "ReacTest"
+      },
+      {
+        "command": "reactest.runEvaluation",
+        "title": "Rodar avaliação (Copilot)",
+        "category": "ReacTest"
       }
     ],
     "menus": {

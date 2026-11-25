@@ -8,12 +8,16 @@ export interface VSCodeLmClientOptions {
   family?: string;
   /** Token de cancelamento opcional, repassado ao sendRequest/countTokens. */
   cancellationToken?: vscode.CancellationToken;
+  /** Modelo já escolhido (ex.: o que passou no teste de tool calling); dispensa a seleção por família. */
+  model?: vscode.LanguageModelChat;
 }
 
 export class VSCodeLmClient implements LLMClient {
   private model: vscode.LanguageModelChat | undefined;
 
-  constructor(private readonly opts: VSCodeLmClientOptions = {}) {}
+  constructor(private readonly opts: VSCodeLmClientOptions = {}) {
+    this.model = opts.model;
+  }
 
   private async getModel(): Promise<vscode.LanguageModelChat> {
     if (this.model) return this.model;
@@ -108,4 +112,39 @@ function toVSCodeMessages(req: LLMRequest): vscode.LanguageModelChatMessage[] {
     out.push(vscode.LanguageModelChatMessage.User('Responda apenas com um objeto JSON válido, sem texto adicional.'));
   }
   return out;
+}
+
+/**
+ * Testa tool calling: pede ao modelo que chame a ferramenta `echo` com o texto "ok".
+ * ok = o modelo devolveu um LanguageModelToolCallPart de `echo`.
+ */
+export async function probeToolCalling(
+  model: vscode.LanguageModelChat,
+  token: vscode.CancellationToken = new vscode.CancellationTokenSource().token,
+): Promise<{ ok: boolean; error?: string; input?: unknown }> {
+  try {
+    const response = await model.sendRequest(
+      [vscode.LanguageModelChatMessage.User('Chame a ferramenta "echo" com o texto "ok". Não responda com texto.')],
+      {
+        tools: [
+          {
+            name: 'echo',
+            description: 'Devolve o texto recebido.',
+            inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+          },
+        ],
+        toolMode: vscode.LanguageModelChatToolMode.Required,
+      },
+      token,
+    );
+    let text = '';
+    for await (const part of response.stream) {
+      if (part instanceof vscode.LanguageModelToolCallPart && part.name === 'echo') return { ok: true, input: part.input };
+      if (part instanceof vscode.LanguageModelTextPart) text += part.value;
+    }
+    return { ok: false, error: `o modelo respondeu sem chamar a ferramenta${text ? `: "${text.slice(0, 120)}"` : ''}` };
+  } catch (err) {
+    const code = err instanceof vscode.LanguageModelError && err.code ? ` [${err.code}]` : '';
+    return { ok: false, error: `${err instanceof Error ? err.message : String(err)}${code}` };
+  }
 }
