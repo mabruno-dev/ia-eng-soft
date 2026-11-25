@@ -2,7 +2,7 @@
 // Lê só RunRecords; grava runs.csv e summary.md em <outDir>. Não importa `vscode`.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { answersFileAsker } from '../askers';
+import { FileAsker } from '../askers';
 import { defaultTestFilePath } from '../agents/context';
 import { type PipelineEvent, runPipeline as defaultRunPipeline, type RunPipelineOptions } from '../pipeline';
 import type { Asker, LLMClient, PipelineConfig, RunRecord } from '../types';
@@ -132,7 +132,7 @@ export async function evaluate(opts: EvaluateOptions): Promise<EvaluateResult> {
           rmSync(testAbs, { force: true }); // cada run parte do zero
           const pipelineConfig = pipelineConfigFor(label, config, opts.provider);
           let asker: Asker | undefined;
-          if (pipelineConfig.elicit && config.answersFile) asker = answersFileAsker(config.answersFile);
+          if (pipelineConfig.elicit && config.answersFile) asker = new FileAsker(config.answersFile);
           const record = await runPipeline({
             workspaceRoot: config.workspace,
             componentPath: component,

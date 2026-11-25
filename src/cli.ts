@@ -1,6 +1,6 @@
 import { isAbsolute, relative, resolve } from 'node:path';
 import { Command, InvalidArgumentError, Option } from 'commander';
-import { answersFileAsker, terminalAsker } from './core/askers';
+import { CliAsker, FileAsker, NoopAsker } from './core/askers';
 import { AGENT_LABELS, type PipelineEvent, runFiles, runPipeline } from './core/pipeline';
 import { formatEvent } from './core/progressFormat';
 import type { Asker, LLMClient, PipelineConfig, RunRecord } from './core/types';
@@ -51,6 +51,7 @@ interface CliOptions {
   model: string;
   provider: 'openai' | 'vscode';
   answers?: string;
+  maxQuestions: number;
 }
 
 const program = new Command()
@@ -65,7 +66,8 @@ const program = new Command()
   .option('--max-steps <n>', 'máximo de passos (chamadas ao LLM) por agente', int('--max-steps', 1), 8)
   .option('--model <model>', 'modelo do LLM', DEFAULT_MODEL)
   .addOption(new Option('--provider <provider>', 'provedor do LLM').choices(['openai', 'vscode']).default('openai'))
-  .option('--answers <arquivo.json>', 'respostas da elicitação (modo não interativo)')
+  .option('--answers <arquivo.json>', 'respostas da elicitação (modo não interativo; casa por palavras-chave por componente)')
+  .option('--max-questions <n>', 'máximo de perguntas da elicitação', int('--max-questions', 0), 5)
   .action(async (component: string, opts: CliOptions) => {
     const workspaceRoot = resolve(opts.workspace);
     const componentPath = isAbsolute(component) ? relative(workspaceRoot, component).split('\\').join('/') : component;
@@ -74,7 +76,7 @@ const program = new Command()
     }
     const llm: LLMClient = new OpenAIClient({ model: opts.model });
     let asker: Asker | undefined;
-    if (opts.elicit) asker = opts.answers ? answersFileAsker(opts.answers) : process.stdin.isTTY ? terminalAsker() : undefined;
+    if (opts.elicit) asker = opts.answers ? new FileAsker(opts.answers) : process.stdin.isTTY ? new CliAsker() : new NoopAsker();
 
     const config: PipelineConfig = {
       heal: opts.heal,
@@ -87,7 +89,7 @@ const program = new Command()
     };
     console.log(`ReacTest-Agent · ${componentPath} · ${opts.provider}/${opts.model} · heal=${config.heal} elicit=${config.elicit} verify=${config.verify} · max-iter=${config.maxIterations}`);
 
-    const record = await runPipeline({ workspaceRoot, componentPath, config, llm, ...(asker ? { asker } : {}), onEvent });
+    const record = await runPipeline({ workspaceRoot, componentPath, config, llm, ...(asker ? { asker } : {}), maxQuestions: opts.maxQuestions, onEvent });
     printSummary(record, workspaceRoot);
     process.exitCode = record.status === 'PASSED' ? 0 : 1;
   });

@@ -141,16 +141,59 @@ describe('runPipeline', () => {
     expect(renderReport(r)).toContain('Self-healing desativado (baseline)');
   });
 
-  it('elicit e verify ligados são pontos de extensão no-op (só com asker para a elicitação)', async () => {
-    const fake = new FakeLLM({ context: contextScript(), ...generatorScript(GOOD) });
+  it('Elicitação plugada: pergunta, o Gerador recebe as regras, fromRules vira derivedCases no RunRecord', async () => {
+    const Q = 'A senha tem tamanho mínimo?';
+    const A = 'Sim: pelo menos 8 caracteres.';
+    const planWithRules = JSON.stringify({
+      scenarios: [
+        { name: 'renderiza o botão Entrar', kind: 'render', description: 'estado inicial', mocks: [], fromRules: [] },
+        { name: 'mostra boas-vindas no sucesso', kind: 'async', description: 'login resolve', mocks: ['../services/authApi'], fromRules: [] },
+        { name: 'rejeita senha com 7 caracteres', kind: 'edge', description: 'limite da R1', mocks: [], fromRules: ['R1', 'R7'] },
+      ],
+    });
+    const fake = new FakeLLM({
+      context: contextScript(),
+      elicitation: [
+        call('read_rules', { component: COMPONENT }),
+        call('ask_user', { question: Q, why: 'valor-limite do teste de validação' }),
+        call('save_rule', { id: 'R1', question: Q, answer: A }),
+        JSON.stringify({ rules: [{ id: 'R1', question: Q, answer: A }] }),
+      ],
+      [GENERATOR_PLAN_AGENT]: [planWithRules],
+      [GENERATOR_CODE_AGENT]: [call('validate_imports', { code: GOOD }), call('typecheck_test', { code: GOOD }), JSON.stringify({ code: GOOD })],
+    });
+    const asked: string[] = [];
+    const asker = { ask: async (q: { question: string }) => (asked.push(q.question), A) };
     const events: PipelineEvent[] = [];
-    const asker = { ask: async () => 'sim' };
+
     const r = await runPipeline({
       typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ elicit: true, verify: true }), llm: fake, asker,
       execute: scriptedExecutor(ws.root, () => execs.pass()).execute, onEvent: (e) => events.push(e),
     });
+
     expect(r.status).toBe('PASSED');
+    expect(asked).toEqual([Q]);
+    const planPrompt = fake.requestsFor(GENERATOR_PLAN_AGENT)[0]!.messages[0]!.content;
+    expect(planPrompt).toContain(`Regras de negócio (use os ids em fromRules):\n- R1: ${Q} → ${A}`);
+    expect(fake.requestsFor(GENERATOR_CODE_AGENT)[0]!.messages[0]!.content).toContain(`- R1: ${Q} → ${A}`);
+    // R7 não existe: descartado; 1 cenário derivado das respostas
+    expect(r.elicitation).toEqual({ questions: 1, answered: 1, derivedCases: 1 });
+    expect(savedRecord(r).elicitation).toEqual({ questions: 1, answered: 1, derivedCases: 1 });
+    expect(r.agents.elicitation).toEqual({ steps: 4, toolCalls: 3 });
+    expect(r.timings.perAgentMs.elicitation).toBeGreaterThan(0);
     expect(events.filter((e) => e.type === 'stage-start').map((e) => (e as { stage: string }).stage)).toEqual(['context', 'elicitation', 'generator', 'write', 'heal', 'verifier', 'record']);
+    expect(readFileSync(join(ws.root, '.reactest', 'rules.md'), 'utf8')).toContain(`- [R1] ${Q} → ${A}`);
+  });
+
+  it('elicit sem asker usa NoopAsker: as perguntas são puladas e nenhuma regra chega ao Gerador', async () => {
+    const fake = new FakeLLM({
+      context: contextScript(),
+      elicitation: [call('read_rules', {}), call('ask_user', { question: 'Limite?', why: 'w' }), JSON.stringify({ rules: [] })],
+      ...generatorScript(GOOD),
+    });
+    const r = await runPipeline({ typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ elicit: true }), llm: fake, execute: scriptedExecutor(ws.root, () => execs.pass()).execute });
+    expect(r.elicitation).toEqual({ questions: 1, answered: 0, derivedCases: 0 });
+    expect(fake.requestsFor(GENERATOR_PLAN_AGENT)[0]!.messages[0]!.content).toContain('Regras de negócio: nenhuma informada');
   });
 
   it('(c) erro inesperado vira status ERROR com registro gravado (sem exceção solta)', async () => {

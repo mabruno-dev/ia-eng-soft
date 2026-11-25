@@ -5,7 +5,8 @@ import * as vscode from 'vscode';
 import { type PipelineEvent, runFiles, runPipeline } from '../core/pipeline';
 import { formatEvent } from '../core/progressFormat';
 import { componentName, renderReport } from '../core/report';
-import type { Asker, LLMClient, LLMRequest, PipelineConfig, RunRecord } from '../core/types';
+import type { LLMClient, LLMRequest, PipelineConfig, RunRecord } from '../core/types';
+import { VSCodeAsker } from './vscodeAsker';
 import { OpenAIClient } from '../llm/openai';
 import { VSCodeLmClient } from '../llm/vscodeLm';
 
@@ -84,18 +85,6 @@ async function createLLM(context: vscode.ExtensionContext, provider: PipelineCon
   return new OpenAIClient({ model: model || DEFAULT_OPENAI_MODEL, ...(apiKey ? { apiKey } : {}) });
 }
 
-/** Perguntas da elicitação via UI (quick pick quando há opções). */
-const vscodeAsker: Asker = {
-  async ask(question, options) {
-    if (options?.length) {
-      const other = 'Outra resposta…';
-      const pick = await vscode.window.showQuickPick([...options, other], { title: 'ReacTest — regra de negócio', placeHolder: question, ignoreFocusOut: true });
-      if (pick !== other) return pick;
-    }
-    const a = await vscode.window.showInputBox({ title: 'ReacTest — regra de negócio', prompt: question, ignoreFocusOut: true });
-    return a?.trim() || undefined;
-  },
-};
 
 const STATUS_MSG: Record<RunRecord['status'], string> = {
   PASSED: 'a suíte gerada passou',
@@ -150,7 +139,7 @@ async function generate(context: vscode.ExtensionContext, uri?: vscode.Uri): Pro
           else if (e.type === 'agent-step' && e.entry.tools?.length) progress.report({ message: `${e.label}: ${e.entry.tools.map((t) => t.name).join(', ')}` });
           else if (e.type === 'iteration') progress.report({ message: `iteração ${e.iteration.iteration}: ${e.iteration.repairStatus}` });
         };
-        return runPipeline({ workspaceRoot, componentPath, config, llm: cancellable(llm, token), ...(config.elicit ? { asker: vscodeAsker } : {}), onEvent });
+        return runPipeline({ workspaceRoot, componentPath, config, llm: cancellable(llm, token), ...(config.elicit ? { asker: new VSCodeAsker() } : {}), onEvent });
       },
     );
     if (record) await finish(workspaceRoot, record);

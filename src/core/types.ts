@@ -121,7 +121,17 @@ export interface RunIteration {
   alignedToBehavior: boolean;
 }
 
-/** Pergunta ao desenvolvedor (UI da extensão, terminal ou arquivo de respostas). undefined = sem resposta. */
+/** Uma pergunta da Elicitação ao desenvolvedor. */
+export interface AskerQuestion {
+  id: string;
+  question: string;
+  /** Por que a regra importa para o teste (mostrado ao dev como explicação). */
+  why: string;
+  /** Componente em questão (relativo ao workspace); usado pelo FileAsker para escopar as respostas. */
+  component?: string;
+}
+
+/** Pergunta ao desenvolvedor (UI da extensão, terminal ou arquivo de respostas). undefined = pulou. */
 export interface Asker {
-  ask(question: string, options?: string[]): Promise<string | undefined>;
+  ask(q: AskerQuestion): Promise<string | undefined>;
 }

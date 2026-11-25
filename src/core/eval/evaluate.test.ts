@@ -14,7 +14,7 @@ function setup() {
   const ws = join(root, 'app');
   mkdirSync(join(ws, 'src'), { recursive: true });
   const answers = join(root, 'answers.json');
-  writeFileSync(answers, JSON.stringify({ regra: 'resposta' }));
+  writeFileSync(answers, JSON.stringify({ A: { limite: 'resposta' } }));
   const config: EvalConfig = {
     workspace: ws,
     components: ['src/A.tsx', 'src/B.tsx'],
@@ -66,7 +66,7 @@ describe('evaluate', () => {
     const c2 = calls.filter((c) => c.config.heal);
     expect(c1.every((c) => !c.config.elicit && c.config.verify && !c.asker)).toBe(true);
     expect(c2.every((c) => c.config.elicit && c.config.verify && c.asker)).toBe(true);
-    expect(await c2[0]!.asker!.ask('Qual a regra?')).toBe('resposta');
+    expect(await c2[0]!.asker!.ask({ id: 'Q1', question: 'Qual o limite?', why: 'x', component: 'src/A.tsx' })).toBe('resposta');
 
     expect(readFileSync(join(ws, 'src/A.test.tsx'), 'utf8')).toBe('teste do dev');
     expect(existsSync(join(ws, 'src/B.test.tsx'))).toBe(false);

@@ -37,6 +37,12 @@ export function formatToolResult(name: string, ok: boolean, result: string): str
       return /"written":true/.test(result) ? '✓ gravado' : `✗ recusado: ${pick(/"violations":\["([^"]+)/) ?? 'nada a gravar'}`;
     case 'check_repair':
       return /"ok":true/.test(result) ? '✓ guardrail ok' : `✗ ${pick(/"violations":\["([^"]+)/) ?? 'violações'}`;
+    case 'ask_user':
+      return /"error"/.test(result) ? `✗ ${pick(/"error":"([^"]+)/) ?? 'limite atingido'}` : `→ ${pick(/"answer":"((?:[^"\\]|\\.)*)"/) ?? '?'}`;
+    case 'save_rule':
+      return `✓ ${pick(/"id":"([^"]+)/) ?? ''} salva`;
+    case 'read_rules':
+      return `✓ ${(result.match(/"id":"/g) ?? []).length} regra(s)${/"hashChanged":true/.test(result) ? ' (código mudou)' : ''}`;
     case 'validate_imports':
       return /"valid":true/.test(result) ? '✓ imports ok' : `✗ não resolvidos: ${pick(/"unresolved":(\[[^\]]*\])/) ?? ''}`;
     case 'run_jest':

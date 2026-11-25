@@ -1,12 +1,41 @@
 {
-  "answers": {
-    "força": "Forte: 12 ou mais caracteres com pelo menos um número E um símbolo. Média: 8 ou mais caracteres com número OU símbolo. Caso contrário, fraca. O indicador só aparece quando há algum valor digitado.",
-    "senha": "No login a senha é obrigatória e deve ter pelo menos 8 caracteres.",
-    "e-mail": "O e-mail é obrigatório e precisa ter formato válido (nome@dominio.tld).",
-    "cupom": "Só existe o cupom PROMO10 (sem diferenciar maiúsculas/minúsculas, ignorando espaços), que dá 10% de desconto sobre o subtotal. Qualquer outro código mostra 'Cupom inválido.'.",
-    "desconto": "O desconto é de 10% do subtotal quando o cupom PROMO10 está aplicado; o total é subtotal menos desconto.",
-    "filtro": "O filtro de usuários ignora maiúsculas/minúsculas e espaços nas pontas, e busca por nome ou e-mail.",
-    "tema": "O tema padrão é claro; o botão alterna entre claro e escuro e a escolha persiste no localStorage.",
-    "desabilitado": "Um botão desabilitado não dispara onClick."
+  "PasswordField": {
+    "forte|forca|força|strength|classifica|criterio|critério": "Forte: pelo menos 12 caracteres E pelo menos um número E pelo menos um símbolo (caractere que não é letra nem número). Média: pelo menos 8 caracteres com número OU símbolo. Qualquer outra senha é fraca.",
+    "media|média|intermediaria|intermediária": "Média: pelo menos 8 caracteres e pelo menos um número ou um símbolo; se tiver 12+ caracteres com número e símbolo, já é forte.",
+    "fraca|minimo|mínimo|tamanho|comprimento|caracteres": "Abaixo de 8 caracteres é sempre fraca. Para ser forte são necessários no mínimo 12 caracteres, com número e símbolo.",
+    "simbolo|símbolo|especial|numero|número|digito|dígito": "Símbolo é qualquer caractere que não seja letra (A-Z, a-z) nem dígito, inclusive espaço. Forte exige número E símbolo; média exige número OU símbolo.",
+    "indicador|exibir|aparece|vazio|vazia": "O indicador de força só aparece quando há algum valor digitado; com o campo vazio nada é exibido.",
+    "mostrar|ocultar|visivel|visível|visibilidade": "O botão alterna entre mostrar e ocultar a senha; o padrão é oculto (type=password)."
+  },
+  "CartSummary": {
+    "cupom|promo10|desconto|codigo|código": "O único cupom válido é PROMO10: 10% de desconto sobre o subtotal. Não diferencia maiúsculas de minúsculas e ignora espaços nas pontas. Qualquer outro código mostra 'Cupom inválido.' e não aplica desconto.",
+    "invalido|inválido|erro|mensagem": "Cupom inválido mostra a mensagem 'Cupom inválido.' e o carrinho continua sem desconto.",
+    "total|subtotal|calculo|cálculo|arredonda": "Subtotal = soma de preço × quantidade. Desconto = 10% do subtotal com PROMO10. Total = subtotal − desconto. Valores em reais, formato R$ 0,00.",
+    "vazio|vazia|itens|nenhum": "Com o carrinho vazio mostra 'Seu carrinho está vazio.' e não exibe totais nem cupom.",
+    "remover|esvaziar|limpar|excluir": "Remover um item tira só aquele item; 'Esvaziar carrinho' remove todos os itens.",
+    "acumula|acumular|multiplos|múltiplos|mais de um": "Só um cupom por vez; enquanto um cupom está aplicado o campo de cupom não aparece (há o botão 'Remover cupom')."
+  },
+  "LoginForm": {
+    "mail|e-mail|email": "E-mail obrigatório: vazio mostra 'Informe o e-mail.'; formato inválido (precisa de nome@dominio.tld) mostra 'E-mail inválido.'. Espaços nas pontas são ignorados.",
+    "senha|password": "Senha obrigatória: vazia mostra 'Informe a senha.'; com menos de 8 caracteres mostra 'A senha deve ter pelo menos 8 caracteres.'.",
+    "minimo|mínimo|tamanho|caracteres|comprimento": "A senha precisa ter no mínimo 8 caracteres (7 é recusado, 8 é aceito).",
+    "api|falha|servidor|rede|erro|mensagem": "Se o login falhar, mostra a mensagem de erro vinda da API; sem mensagem, mostra 'Não foi possível entrar.'. O formulário continua na tela para nova tentativa.",
+    "sucesso|boas-vindas|bem-vindo|logado": "Após login bem-sucedido mostra 'Bem-vindo, <nome do usuário>!' e chama onSuccess com o resultado da API.",
+    "carregando|loading|enviando|entrando|duplo": "Durante o envio o botão fica desabilitado e mostra 'Entrando...', para evitar envio duplo."
+  },
+  "UserList": {
+    "filtro|filtrar|busca|buscar|pesquisa": "O filtro ignora maiúsculas/minúsculas e espaços nas pontas e procura no nome OU no e-mail.",
+    "vazio|vazia|nenhum": "Sem usuários cadastrados mostra 'Nenhum usuário cadastrado.'; filtro sem resultado mostra 'Nenhum usuário encontrado para “<termo>”.'.",
+    "erro|falha|mensagem": "Se a API falhar mostra 'Falha ao carregar usuários: <mensagem do erro>'.",
+    "carregando|loading": "Enquanto carrega mostra 'Carregando usuários...'."
+  },
+  "ThemeToggle": {
+    "tema|padrao|padrão|inicial|claro|escuro": "O tema padrão é claro. O botão alterna entre claro e escuro.",
+    "persist|salva|localstorage|recarregar": "A escolha do tema persiste no localStorage (chave reactest-theme) e é restaurada ao recarregar.",
+    "documento|html|atributo|data-theme": "O tema atual é aplicado em document.documentElement.dataset.theme ('light' ou 'dark')."
+  },
+  "Button": {
+    "desabilitado|disabled|clique|onclick": "Botão desabilitado não dispara onClick.",
+    "variante|variant|padrao|padrão": "A variante padrão é primary; as outras são secondary e danger."
   }
 }

@@ -3,7 +3,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { TraceWriter } from './agent/trace';
 import type { TraceEntry } from './agent/trace';
+import { NoopAsker } from './askers';
 import { buildContext, defaultTestFilePath } from './agents/context';
+import { elicitRules, type ElicitationStats } from './agents/elicitation';
 import { type Diagnosis, executeTests } from './agents/executor';
 import { generateTest } from './agents/generator';
 import { type RepairTestOptions, repairTest } from './agents/repairer';
@@ -51,7 +53,10 @@ export interface RunPipelineOptions {
   componentPath: string;
   config: PipelineConfig;
   llm: LLMClient;
+  /** Quem responde às perguntas da Elicitação (padrão: NoopAsker — todas puladas). */
   asker?: Asker;
+  /** Limite de perguntas da Elicitação (padrão 5, imposto pela ferramenta ask_user). */
+  maxQuestions?: number;
   onEvent?: (e: PipelineEvent) => void;
   /** Padrão: newRunId(). */
   runId?: string;
@@ -155,10 +160,27 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
     );
     testFilePath = ctx.testFilePath || defaultTestFilePath(componentPath);
 
-    // 02 — Elicitação (ponto de extensão: o agente 02 entra numa etapa futura)
+    // 02 — Elicitação: regras de negócio que o código não revela (perguntas ao dev via Asker)
     let rules: string | undefined;
-    if (config.elicit && opts.asker) {
-      rules = await stage('elicitation', 'elicitation', async () => undefined as string | undefined, () => 'ainda não implementada (no-op)');
+    let elicitationStats: ElicitationStats | undefined;
+    if (config.elicit) {
+      const maxQuestions = opts.maxQuestions ?? 5;
+      const el = await stage(
+        'elicitation',
+        'elicitation',
+        () =>
+          elicitRules({
+            ...common,
+            ctx,
+            workspaceRoot,
+            asker: opts.asker ?? new NoopAsker(),
+            maxQuestions,
+            maxSteps: Math.max(config.maxAgentSteps, 2 * maxQuestions + 4),
+          }),
+        (r) => `${r.rules.length} regra(s); ${r.stats.questions} pergunta(s), ${r.stats.answered} respondida(s), ${r.stats.reused} reaproveitada(s)`,
+      );
+      rules = el.rulesText || undefined;
+      elicitationStats = el.stats;
     }
 
     // 03 — Gerador
@@ -169,6 +191,13 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       (g) => `${g.plan.scenarios.length} cenários; ${countLines(g.code)} linhas${g.warnings.length ? `; ${g.warnings.length} aviso(s)` : ''}`,
     );
     generatedCode = gen.code;
+    if (elicitationStats) {
+      partial.elicitation = {
+        questions: elicitationStats.questions,
+        answered: elicitationStats.answered,
+        derivedCases: gen.plan.scenarios.filter((s) => s.fromRules.length > 0).length,
+      };
+    }
 
     // Grava o arquivo de teste
     const testAbs = ws.abs(testFilePath);
@@ -210,6 +239,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       exec = heal.exec;
       finalCode = heal.finalCode;
       partial = {
+        ...partial,
         iterations: heal.iterations,
         rejectedRepairs: heal.rejectedRepairs,
         alignedToBehavior: heal.alignedToBehavior,
@@ -228,7 +258,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       exec = r.exec;
       status = exec.passed ? 'PASSED' : 'FAILED';
       finalCode = generatedCode;
-      partial = { iterations: 0, rejectedRepairs: 0, alignedToBehavior: 0, modificationRate: 0, history: [] };
+      partial = { ...partial, iterations: 0, rejectedRepairs: 0, alignedToBehavior: 0, modificationRate: 0, history: [] };
     }
 
     // 06 — Verificador (ponto de extensão)
@@ -248,6 +278,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       alignedToBehavior: partial.alignedToBehavior ?? 0,
       testFilePath: tfp,
       history: partial.history ?? [],
+      ...(partial.elicitation ? { elicitation: partial.elicitation } : {}),
     };
     return await finish(record);
   } catch (err) {
@@ -275,6 +306,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       alignedToBehavior: partial.alignedToBehavior ?? 0,
       ...(testFilePath ? { testFilePath } : {}),
       history: partial.history ?? [],
+      ...(partial.elicitation ? { elicitation: partial.elicitation } : {}),
       error: message,
     });
   }
