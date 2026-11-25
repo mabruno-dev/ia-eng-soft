@@ -8,6 +8,8 @@ export interface TagStats {
   inputTokens: number;
   outputTokens: number;
   ms: number;
+  tokensEstimated?: boolean;
+  costUsd?: number;
 }
 
 type Clock = () => number;
@@ -33,6 +35,8 @@ export class MeteredLLM implements LLMClient {
       const res = await this.inner.complete(req);
       s.inputTokens += res.inputTokens;
       s.outputTokens += res.outputTokens;
+      if (res.tokensEstimated) s.tokensEstimated = true;
+      if (res.costUsd) s.costUsd = (s.costUsd ?? 0) + res.costUsd;
       return res;
     } finally {
       s.ms += this.now() - start;
@@ -44,11 +48,13 @@ export class MeteredLLM implements LLMClient {
   }
 
   totals(): RunRecord['llm'] {
-    const t = { calls: 0, inputTokens: 0, outputTokens: 0 };
+    const t: RunRecord['llm'] = { calls: 0, inputTokens: 0, outputTokens: 0 };
     for (const s of this.stats.values()) {
       t.calls += s.calls;
       t.inputTokens += s.inputTokens;
       t.outputTokens += s.outputTokens;
+      if (s.tokensEstimated) t.tokensEstimated = true;
+      if (s.costUsd) t.costUsd = (t.costUsd ?? 0) + s.costUsd;
     }
     return t;
   }

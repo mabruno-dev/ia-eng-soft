@@ -77,7 +77,8 @@ export class VSCodeLmClient implements LLMClient {
     const outputText = text + (toolCalls.length ? JSON.stringify(toolCalls) : '');
     const outputTokens = outputText ? await count(outputText) : 0;
 
-    return { text, ...(toolCalls.length ? { toolCalls } : {}), inputTokens, outputTokens };
+    // countTokens é contagem local, não o uso cobrado pelo provedor.
+    return { text, ...(toolCalls.length ? { toolCalls } : {}), inputTokens, outputTokens, tokensEstimated: true };
   }
 }
 

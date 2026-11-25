@@ -88,6 +88,8 @@ export interface LLMResponse {
   toolCalls?: ToolCall[];
   inputTokens: number;
   outputTokens: number;
+  tokensEstimated?: boolean; // o provedor não informou o uso (Copilot, claude-cli sem usage)
+  costUsd?: number;
 }
 export interface LLMClient { complete(req: LLMRequest): Promise<LLMResponse>; readonly supportsJsonMode?: boolean }
 
@@ -143,7 +145,7 @@ export interface PipelineConfig {
   maxIterations: number;
   maxAgentSteps: number;
   model: string;
-  provider: 'openai' | 'vscode';
+  provider: 'openai' | 'vscode' | 'claude-cli';
 }
 
 export interface RunRecord {
@@ -160,7 +162,7 @@ export interface RunRecord {
   smells?: string[];
   rejectedRepairs: number;                // RQ1: reparos indevidos barrados pelo guardrail
   alignedToBehavior: number;              // RQ1: reparos que alinharam a expectativa ao comportamento observado
-  llm: { calls: number; inputTokens: number; outputTokens: number }; // RQ5
+  llm: { calls: number; inputTokens: number; outputTokens: number; tokensEstimated?: boolean; costUsd?: number }; // RQ5
   agents: Record<string, { steps: number; toolCalls: number }>;      // RQ5
   timings: { totalMs: number; perAgentMs: Record<string, number> };  // RQ5
   elicitation?: { questions: number; answered: number; derivedCases: number }; // RQ4
@@ -175,7 +177,7 @@ export interface RunRecord {
 ```
 npm run build        # esbuild da extensão + tsc --noEmit
 npm test             # vitest
-npm run cli -- <componente> --workspace <dir> [--no-heal] [--no-elicit] [--no-verify] [--max-iter 3] [--model gpt-4o] [--answers eval/answers.json]
+npm run cli -- <componente> --workspace <dir> [--no-heal] [--no-elicit] [--no-verify] [--max-iter 3] [--model gpt-4o] [--provider openai|claude-cli] [--answers eval/answers.json]
 npm run eval -- [--only LoginForm] [--runs 1] [--resume [dir]]
 ```
 

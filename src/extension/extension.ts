@@ -8,6 +8,7 @@ import { componentName, renderReport } from '../core/report';
 import type { LLMClient, LLMRequest, PipelineConfig, RunRecord } from '../core/types';
 import { VSCodeAsker } from './vscodeAsker';
 import { listCopilotModels, runCopilotEvaluation } from './evaluation';
+import { CLAUDE_CLI_DEFAULT_MODEL, ClaudeCliClient } from '../llm/claudeCli';
 import { OpenAIClient } from '../llm/openai';
 import { VSCodeLmClient } from '../llm/vscodeLm';
 
@@ -22,6 +23,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     output,
     vscode.commands.registerCommand('reactest.generate', (uri?: vscode.Uri) => generate(context, uri)),
+    // Componente do editor ativo, com Claude Code headless e cura + elicitação ligadas.
+    vscode.commands.registerCommand('reactest.generateClaudeCli', () => generate(context, undefined, { provider: 'claude-cli', heal: true, elicit: true })),
     vscode.commands.registerCommand('reactest.setOpenAIKey', () => setOpenAIKey(context)),
     vscode.commands.registerCommand('reactest.showOutput', () => output.show(true)),
     vscode.commands.registerCommand('reactest.listCopilotModels', () => listCopilotModels(output)),
@@ -75,6 +78,11 @@ function cancellable(inner: LLMClient, token: vscode.CancellationToken): LLMClie
 }
 
 async function createLLM(context: vscode.ExtensionContext, provider: PipelineConfig['provider'], model: string, token: vscode.CancellationToken): Promise<LLMClient | undefined> {
+  if (provider === 'claude-cli') {
+    const abort = new AbortController();
+    token.onCancellationRequested(() => abort.abort());
+    return new ClaudeCliClient({ model: model || CLAUDE_CLI_DEFAULT_MODEL, signal: abort.signal });
+  }
   if (provider === 'vscode') {
     return new VSCodeLmClient({ ...(model ? { family: model } : {}), cancellationToken: token });
   }
@@ -96,7 +104,15 @@ const STATUS_MSG: Record<RunRecord['status'], string> = {
   ERROR: 'a execução falhou',
 };
 
-async function generate(context: vscode.ExtensionContext, uri?: vscode.Uri): Promise<void> {
+interface GenerateOverrides {
+  provider?: PipelineConfig['provider'];
+  heal?: boolean;
+  elicit?: boolean;
+}
+
+const defaultModelFor = (provider: PipelineConfig['provider']) => (provider === 'openai' ? DEFAULT_OPENAI_MODEL : provider === 'claude-cli' ? CLAUDE_CLI_DEFAULT_MODEL : '');
+
+async function generate(context: vscode.ExtensionContext, uri?: vscode.Uri, overrides: GenerateOverrides = {}): Promise<void> {
   const target = uri ?? vscode.window.activeTextEditor?.document.uri;
   if (!target || !target.fsPath.endsWith('.tsx')) {
     void vscode.window.showErrorMessage('ReacTest: abra ou selecione um componente React (.tsx).');
@@ -114,15 +130,17 @@ async function generate(context: vscode.ExtensionContext, uri?: vscode.Uri): Pro
   const componentPath = relative(workspaceRoot, target.fsPath).split('\\').join('/');
 
   const cfg = vscode.workspace.getConfiguration('reactest', target);
-  const provider = cfg.get<PipelineConfig['provider']>('provider', 'vscode');
-  const model = cfg.get<string>('model', '');
+  const provider = overrides.provider ?? cfg.get<PipelineConfig['provider']>('provider', 'vscode');
+  // reactest.model vale para o provider configurado; com outro provider forçado pelo comando, usa o padrão dele.
+  const model = !overrides.provider || overrides.provider === cfg.get<string>('provider') ? cfg.get<string>('model', '') : '';
+  const maxIterations = cfg.get<number>('maxIterations', 3);
   const config: PipelineConfig = {
-    heal: cfg.get<number>('maxIterations', 3) > 0,
-    elicit: cfg.get<boolean>('enableElicitation', true),
+    heal: overrides.heal ?? maxIterations > 0,
+    elicit: overrides.elicit ?? cfg.get<boolean>('enableElicitation', true),
     verify: cfg.get<boolean>('enableVerifier', true),
-    maxIterations: cfg.get<number>('maxIterations', 3),
+    maxIterations: overrides.heal && maxIterations < 1 ? 3 : maxIterations,
     maxAgentSteps: cfg.get<number>('maxAgentSteps', 8),
-    model: model || (provider === 'openai' ? DEFAULT_OPENAI_MODEL : ''),
+    model: model || defaultModelFor(provider),
     provider,
   };
 
@@ -162,7 +180,7 @@ async function finish(workspaceRoot: string, record: RunRecord): Promise<void> {
 
   output.appendLine('');
   output.appendLine(`Status: ${record.status}${record.error ? ` — ${record.error}` : ''} · iterações: ${record.iterations} · branches: ${record.coverage.branches}%`);
-  output.appendLine(`LLM: ${record.llm.calls} chamadas, ${record.llm.inputTokens}+${record.llm.outputTokens} tokens · ${(record.timings.totalMs / 1000).toFixed(1)} s`);
+  output.appendLine(`LLM: ${record.llm.calls} chamadas, ${record.llm.inputTokens}+${record.llm.outputTokens} tokens${record.llm.tokensEstimated ? ' (estimados)' : ''}${record.llm.costUsd ? ` · US$ ${record.llm.costUsd.toFixed(4)} (informado pelo provedor)` : ''} · ${(record.timings.totalMs / 1000).toFixed(1)} s`);
   output.appendLine(`RunRecord: ${files.record}`);
   output.appendLine(`Trace: ${files.trace}`);
   output.appendLine(`Relatório: ${reportPath}`);

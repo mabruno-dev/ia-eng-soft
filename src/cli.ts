@@ -4,6 +4,7 @@ import { CliAsker, FileAsker, NoopAsker } from './core/askers';
 import { AGENT_LABELS, type PipelineEvent, runFiles, runPipeline } from './core/pipeline';
 import { formatEvent } from './core/progressFormat';
 import type { Asker, LLMClient, PipelineConfig, RunRecord } from './core/types';
+import { CLAUDE_CLI_DEFAULT_MODEL, ClaudeCliClient } from './llm/claudeCli';
 import { OpenAIClient } from './llm/openai';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o';
@@ -26,7 +27,7 @@ function printSummary(r: RunRecord, workspaceRoot: string): void {
   if (r.status === 'SUSPECTED_COMPONENT_BUG') console.log('             ⚠ o componente pode ter defeito; o teste NÃO foi alterado.');
   console.log(`Iterações:   ${r.iterations} (reparos recusados pelo guardrail: ${r.rejectedRepairs}; alinhados ao comportamento: ${r.alignedToBehavior ?? 0}; modificação: ${(r.modificationRate * 100).toFixed(1)}%)`);
   console.log(`Cobertura:   statements ${c.statements}% · branches ${c.branches}% · functions ${c.functions}% · lines ${c.lines}%`);
-  console.log(`LLM:         ${r.llm.calls} chamadas · ${r.llm.inputTokens} tokens de entrada · ${r.llm.outputTokens} de saída`);
+  console.log(`LLM:         ${r.llm.calls} chamadas · ${r.llm.inputTokens} tokens de entrada · ${r.llm.outputTokens} de saída${r.llm.tokensEstimated ? ' (estimados)' : ''}${r.llm.costUsd ? ` · US$ ${r.llm.costUsd.toFixed(4)}` : ''}`);
   console.log('Agentes:');
   for (const [a, s] of Object.entries(r.agents)) {
     const ms = r.timings.perAgentMs[a.split('.')[0]!];
@@ -49,7 +50,7 @@ interface CliOptions {
   maxIter: number;
   maxSteps: number;
   model: string;
-  provider: 'openai' | 'vscode';
+  provider: PipelineConfig['provider'];
   answers?: string;
   maxQuestions: number;
 }
@@ -64,17 +65,18 @@ const program = new Command()
   .option('--no-verify', 'desativa o Verificador (mutation testing / smells)')
   .option('--max-iter <n>', 'máximo de iterações de reparo', int('--max-iter', 0), 3)
   .option('--max-steps <n>', 'máximo de passos (chamadas ao LLM) por agente', int('--max-steps', 1), 8)
-  .option('--model <model>', 'modelo do LLM', DEFAULT_MODEL)
-  .addOption(new Option('--provider <provider>', 'provedor do LLM').choices(['openai', 'vscode']).default('openai'))
+  .option('--model <model>', `modelo do LLM (padrão: ${DEFAULT_MODEL}; com --provider claude-cli: ${CLAUDE_CLI_DEFAULT_MODEL})`, DEFAULT_MODEL)
+  .addOption(new Option('--provider <provider>', 'provedor do LLM').choices(['openai', 'vscode', 'claude-cli']).default('openai'))
   .option('--answers <arquivo.json>', 'respostas da elicitação (modo não interativo; casa por palavras-chave por componente)')
   .option('--max-questions <n>', 'máximo de perguntas da elicitação', int('--max-questions', 0), 5)
   .action(async (component: string, opts: CliOptions) => {
     const workspaceRoot = resolve(opts.workspace);
     const componentPath = isAbsolute(component) ? relative(workspaceRoot, component).split('\\').join('/') : component;
     if (opts.provider === 'vscode') {
-      throw new Error('O provider "vscode" (Copilot) só está disponível dentro da extensão do VS Code. Use --provider openai no CLI.');
+      throw new Error('O provider "vscode" (Copilot) só está disponível dentro da extensão do VS Code. Use --provider openai ou claude-cli no CLI.');
     }
-    const llm: LLMClient = new OpenAIClient({ model: opts.model });
+    if (opts.provider === 'claude-cli' && program.getOptionValueSource('model') === 'default') opts.model = CLAUDE_CLI_DEFAULT_MODEL;
+    const llm: LLMClient = opts.provider === 'claude-cli' ? new ClaudeCliClient({ model: opts.model }) : new OpenAIClient({ model: opts.model });
     let asker: Asker | undefined;
     if (opts.elicit) asker = opts.answers ? new FileAsker(opts.answers) : process.stdin.isTTY ? new CliAsker() : new NoopAsker();
 

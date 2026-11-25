@@ -37,6 +37,11 @@
         "command": "reactest.runEvaluation",
         "title": "Rodar avaliação (Copilot)",
         "category": "ReacTest"
+      },
+      {
+        "command": "reactest.generateClaudeCli",
+        "title": "Gerar testes (Claude CLI)",
+        "category": "ReacTest"
       }
     ],
     "menus": {
@@ -68,11 +73,13 @@
           "type": "string",
           "enum": [
             "vscode",
+            "claude-cli",
             "openai"
           ],
           "default": "vscode",
           "enumDescriptions": [
             "Modelos do GitHub Copilot via API vscode.lm (padrão)",
+            "Claude Code (comando `claude`, logado com a assinatura) em modo headless",
             "API da OpenAI (chave em \"ReacTest: Definir chave OpenAI\")"
           ],
           "description": "Provedor do LLM usado pelos agentes."
@@ -80,7 +87,7 @@
         "reactest.model": {
           "type": "string",
           "default": "",
-          "description": "Modelo. Copilot: família (ex.: gpt-4o, claude-sonnet-4); vazio = primeiro disponível. OpenAI: nome do modelo; vazio = gpt-4o."
+          "description": "Modelo. Copilot: família (ex.: gpt-4o, claude-sonnet-4); vazio = primeiro disponível. Claude CLI: alias ou nome (ex.: sonnet, opus); vazio = sonnet. OpenAI: nome do modelo; vazio = gpt-4o."
         },
         "reactest.allowMiniModels": {
           "type": "boolean",

@@ -25,6 +25,10 @@ export interface LLMResponse {
   toolCalls?: ToolCall[];
   inputTokens: number;
   outputTokens: number;
+  /** Tokens estimados no cliente (o provedor não informou o uso real). */
+  tokensEstimated?: boolean;
+  /** Custo informado pelo provedor (ex.: total_cost_usd do Claude Code), quando houver. */
+  costUsd?: number;
 }
 export interface LLMClient {
   complete(req: LLMRequest): Promise<LLMResponse>;
@@ -84,7 +88,7 @@ export interface PipelineConfig {
   maxIterations: number;
   maxAgentSteps: number;
   model: string;
-  provider: 'openai' | 'vscode';
+  provider: 'openai' | 'vscode' | 'claude-cli';
 }
 
 export interface RunRecord {
@@ -101,7 +105,7 @@ export interface RunRecord {
   smells?: string[];
   rejectedRepairs: number;                // RQ1: reparos indevidos barrados pelo guardrail
   alignedToBehavior: number;              // RQ1: reparos que alinharam a expectativa ao comportamento observado (sem evidência de defeito)
-  llm: { calls: number; inputTokens: number; outputTokens: number }; // RQ5
+  llm: { calls: number; inputTokens: number; outputTokens: number; tokensEstimated?: boolean; costUsd?: number }; // RQ5
   agents: Record<string, { steps: number; toolCalls: number }>;      // RQ5
   timings: { totalMs: number; perAgentMs: Record<string, number> };  // RQ5
   elicitation?: { questions: number; answered: number; derivedCases: number }; // RQ4
