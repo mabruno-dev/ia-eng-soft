@@ -51,23 +51,28 @@ export function keywords(text: string): Set<string> {
 const componentKey = (s: string) => s.replace(/\\/g, '/').split('/').pop()!.replace(/\.[^.]+$/, '').toLowerCase();
 
 /**
- * Melhor resposta para a pergunta entre `entries` (chave → resposta). Uma chave pode ter alternativas
- * separadas por "|" ("cupom|promo10|desconto"); uma alternativa casa se TODAS as suas palavras-chave aparecem
- * na pergunta (ou no "why"). Vence a chave com mais alternativas casadas; empate = a primeira. Sem casamento: undefined.
+ * Melhor entrada (chave, resposta) para a pergunta. Uma chave pode ter alternativas separadas por "|"
+ * ("cupom|promo10|desconto"); uma alternativa casa se TODAS as suas palavras-chave aparecem na pergunta
+ * (ou no "why"). Vence a chave com mais alternativas casadas; empate = a primeira. Sem casamento: undefined.
  */
-export function matchAnswer(entries: [string, string][], q: AskerQuestion): string | undefined {
+export function bestEntry(entries: [string, string][], q: AskerQuestion): [string, string] | undefined {
   const exact = entries.find(([k]) => k === q.id || k.trim().toLowerCase() === q.question.trim().toLowerCase());
-  if (exact) return exact[1];
+  if (exact) return exact;
   const words = keywords(`${q.question} ${q.why}`);
-  let best: { score: number; answer: string } | undefined;
-  for (const [key, answer] of entries) {
-    const score = key
+  let best: { score: number; entry: [string, string] } | undefined;
+  for (const entry of entries) {
+    const score = entry[0]
       .split('|')
       .map((alt) => keywords(alt))
       .filter((alt) => alt.size > 0 && [...alt].every((w) => words.has(w))).length;
-    if (score > 0 && (!best || score > best.score)) best = { score, answer };
+    if (score > 0 && (!best || score > best.score)) best = { score, entry };
   }
-  return best?.answer;
+  return best?.entry;
+}
+
+/** Resposta da melhor entrada (ver bestEntry). */
+export function matchAnswer(entries: [string, string][], q: AskerQuestion): string | undefined {
+  return bestEntry(entries, q)?.[1];
 }
 
 /**
@@ -75,12 +80,15 @@ export function matchAnswer(entries: [string, string][], q: AskerQuestion): stri
  *  - por componente: `{ "PasswordField": { "força|forte": "resposta", ... }, "*": { ... } }`;
  *  - plano: `{ "<id ou pergunta ou palavras-chave>": "resposta" }` (vale para qualquer componente);
  *  - legado: `{ "answers": { ... } }`.
- * Casa pela pergunta exata/id ou por palavras-chave (ver matchAnswer), primeiro na seção do componente.
- * Sem casamento: undefined (= "(pulou)").
+ * Casa pela pergunta exata/id ou por palavras-chave (ver bestEntry), primeiro na seção do componente.
+ * Cada resposta só é usada UMA vez por componente: se a melhor correspondência já respondeu outra
+ * pergunta (o mesmo ponto perguntado de novo), devolve undefined. Sem casamento: undefined (= "(pulou)").
  */
 export class FileAsker implements Asker {
   readonly global: [string, string][] = [];
   readonly byComponent = new Map<string, [string, string][]>();
+  /** Entradas já usadas, por componente (chave do componente → entradas). */
+  private readonly used = new Map<string, Set<[string, string]>>();
 
   constructor(readonly path: string) {
     let raw: unknown;
@@ -102,7 +110,13 @@ export class FileAsker implements Asker {
   }
 
   async ask(q: AskerQuestion): Promise<string | undefined> {
-    const scoped = q.component ? this.byComponent.get(componentKey(q.component)) ?? [] : [];
-    return matchAnswer(scoped, q) ?? matchAnswer(this.global, q);
+    const comp = q.component ? componentKey(q.component) : '';
+    const entry = bestEntry(this.byComponent.get(comp) ?? [], q) ?? bestEntry(this.global, q);
+    if (!entry) return undefined;
+    const used = this.used.get(comp) ?? new Set();
+    this.used.set(comp, used);
+    if (used.has(entry)) return undefined; // mesmo ponto já respondido: não repete a resposta
+    used.add(entry);
+    return entry[1];
   }
 }

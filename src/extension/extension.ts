@@ -11,7 +11,7 @@ import { OpenAIClient } from '../llm/openai';
 import { VSCodeLmClient } from '../llm/vscodeLm';
 
 const SECRET_KEY = 'reactest.openaiApiKey';
-const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+const DEFAULT_OPENAI_MODEL = 'gpt-4o';
 
 let output: vscode.OutputChannel;
 let running = false;

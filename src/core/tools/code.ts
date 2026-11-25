@@ -339,6 +339,22 @@ function existingFile(ws: Workspace, p: string): string {
   return ws.abs(hit);
 }
 
+/**
+ * Arquivo LOCAL existente para list_imports/relative_specifier. Quando o alvo é um pacote externo, um alias
+ * ou um arquivo inexistente, o erro é curto e diz qual ferramenta usar (evita o agente insistir no mesmo erro).
+ */
+function existingLocalFile(ws: Workspace, p: string): string {
+  const hit = ws.probe(ws.abs(p)); // ws.abs mantém o erro "fora do workspace"
+  if (hit) return ws.abs(hit);
+  const spec = p.trim();
+  if (!isRelativeSpecifier(spec) && ws.isAlias(spec)) throw new Error(`${spec} é alias de import: use resolve_import para obter o arquivo`);
+  const bare = !isRelativeSpecifier(spec) && !/^[A-Za-z]:|^[\\/]/.test(spec) && !/\.[cm]?[jt]sx?$|\.json$/.test(spec);
+  if (bare && (ws.isBuiltin(spec) || ws.hasDependency(packageName(spec)) || !/[\\/]/.test(spec.replace(/^@[^/]+\//, '')))) {
+    throw new Error(`${spec} é pacote externo: use resolve_import`);
+  }
+  throw new Error(`${spec} não existe no workspace: use os caminhos devolvidos por list_imports/resolve_import`);
+}
+
 export function readFileTool(ws: Workspace): AgentTool<{ path: string }> {
   return {
     spec: {
@@ -366,7 +382,7 @@ export function listImportsTool(ws: Workspace): AgentTool<{ file: string }> {
     },
     argsSchema: z.object({ file: z.string().min(1) }),
     run: async ({ file }) => {
-      const abs = existingFile(ws, file);
+      const abs = existingLocalFile(ws, file);
       return { file: ws.rel(abs), imports: listImports(ws, abs) };
     },
   };
@@ -413,7 +429,7 @@ export function relativeSpecifierTool(ws: Workspace): AgentTool<{ fromTestFile: 
     argsSchema: z.object({ fromTestFile: z.string().min(1), targetFile: z.string().min(1) }),
     run: async ({ fromTestFile, targetFile }) => {
       const from = ws.abs(fromTestFile);
-      const target = existingFile(ws, targetFile);
+      const target = existingLocalFile(ws, targetFile);
       return { specifier: relativeSpecifier(from, target), targetFile: ws.rel(target) };
     },
   };

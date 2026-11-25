@@ -1,5 +1,5 @@
 // Executa só o agente de Contexto (01) com LLM real e mostra o resultado resumido e o trace.
-// Uso: npm run context -- <componente> [--workspace fixtures/sample-app] [--model gpt-4o-mini]
+// Uso: npm run context -- <componente> [--workspace fixtures/sample-app] [--model gpt-4o]
 import { readFile } from 'node:fs/promises';
 import { Command } from 'commander';
 import { TraceWriter } from '../src/core/agent/trace';
@@ -10,7 +10,7 @@ import { OpenAIClient } from '../src/llm/openai';
 const program = new Command()
   .argument('<component>', 'caminho do componente, relativo ao workspace')
   .option('--workspace <dir>', 'raiz do workspace', 'fixtures/sample-app')
-  .option('--model <model>', 'modelo OpenAI', process.env.OPENAI_MODEL ?? 'gpt-4o-mini')
+  .option('--model <model>', 'modelo OpenAI', process.env.OPENAI_MODEL ?? 'gpt-4o')
   .action(async (component: string, opts: { workspace: string; model: string }) => {
     const runId = newRunId();
     const trace = new TraceWriter(opts.workspace, runId);

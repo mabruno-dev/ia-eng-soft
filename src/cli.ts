@@ -6,7 +6,7 @@ import { formatEvent } from './core/progressFormat';
 import type { Asker, LLMClient, PipelineConfig, RunRecord } from './core/types';
 import { OpenAIClient } from './llm/openai';
 
-const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o';
 
 const int = (name: string, min: number) => (v: string) => {
   const n = Number.parseInt(v, 10);

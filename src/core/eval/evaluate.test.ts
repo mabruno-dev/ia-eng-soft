@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -7,7 +7,8 @@ import type { RunPipelineOptions } from '../pipeline';
 import type { RunRecord } from '../types';
 import type { EvalConfig } from './config';
 import { acquireTestFileLock } from '../runLock';
-import { evaluate, matchesOnly } from './evaluate';
+import { classifyInfraError } from '../llmErrors';
+import { EvalInfraError, evaluate, matchesOnly } from './evaluate';
 
 function setup() {
   const root = mkdtempSync(join(tmpdir(), 'reactest-eval-'));
@@ -86,6 +87,55 @@ describe('evaluate', () => {
     const res = await evaluate({ config, outDir, llm: new FakeLLM(), provider: 'openai', runPipeline: fakePipeline(ws, second), runs: 1, resume: true });
     expect(second.map((c) => c.componentPath)).toEqual(['src/B.tsx', 'src/B.tsx']);
     expect(res.runs).toHaveLength(4);
+  });
+
+  it('erro de infraestrutura (429 sem créditos) aborta a avaliação sem gravar o RunRecord do run', async () => {
+    const { ws, config, outDir } = setup();
+    writeFileSync(join(ws, 'src/A.test.tsx'), 'teste do dev');
+    const calls: RunPipelineOptions[] = [];
+    const ok = fakePipeline(ws, calls);
+    const runPipeline = async (o: RunPipelineOptions) => {
+      const r = await ok(o);
+      // 3º run (A C2 #1): a OpenAI recusa por falta de créditos.
+      return calls.length === 3 ? { ...r, status: 'ERROR' as const, error: '429 You exceeded your current quota, please check your plan and billing details.' } : r;
+    };
+    const err = await evaluate({ config, outDir, llm: new FakeLLM(), provider: 'openai', runPipeline }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(EvalInfraError);
+    expect((err as EvalInfraError).kind).toBe('quota');
+    expect((err as EvalInfraError).message).toMatch(/A C2 #1: sem créditos/);
+    expect(calls).toHaveLength(3); // não seguiu para os próximos runs
+    expect(readdirSync(join(outDir, 'records')).sort()).toEqual(['src_A__C1__r1.json', 'src_A__C1__r2.json']);
+    expect(existsSync(join(outDir, 'summary.md'))).toBe(false);
+    expect(readFileSync(join(ws, 'src/A.test.tsx'), 'utf8')).toBe('teste do dev'); // teste do dev restaurado
+  });
+
+  it('erro comum da pipeline (não infraestrutura) é gravado normalmente; --resume refaz runs com ERROR', async () => {
+    const { ws, config, outDir } = setup();
+    const first: RunPipelineOptions[] = [];
+    const ok = fakePipeline(ws, first);
+    const failing = async (o: RunPipelineOptions) => {
+      const r = await ok(o);
+      return first.length === 1 ? { ...r, status: 'ERROR' as const, error: 'O agente "generator" excedeu o limite de 8 passos' } : r;
+    };
+    await evaluate({ config, outDir, llm: new FakeLLM(), provider: 'openai', runPipeline: failing, only: ['A'], runs: 1 });
+    expect(first).toHaveLength(2);
+
+    const second: RunPipelineOptions[] = [];
+    const res = await evaluate({ config, outDir, llm: new FakeLLM(), provider: 'openai', runPipeline: fakePipeline(ws, second), only: ['A'], runs: 1, resume: true });
+    expect(second.map((c) => `${c.componentPath} ${c.config.heal ? 'C2' : 'C1'}`)).toEqual(['src/A.tsx C1']); // só o ERROR foi refeito
+    expect(res.runs.map((r) => r.record.status).sort()).toEqual(['FAILED', 'PASSED']);
+  });
+
+  it('classifyInfraError reconhece cota, 401, 429 e rede; ignora erros da pipeline', () => {
+    expect(classifyInfraError('429 You exceeded your current quota')?.kind).toBe('quota');
+    expect(classifyInfraError('Erro: insufficient_quota')?.kind).toBe('quota');
+    expect(classifyInfraError('401 Incorrect API key provided: sk-***')?.kind).toBe('auth');
+    expect(classifyInfraError('429 Rate limit reached for gpt-4o')?.kind).toBe('rate_limit');
+    expect(classifyInfraError('Connection error.')?.kind).toBe('network');
+    expect(classifyInfraError('Request timed out.')?.kind).toBe('network');
+    expect(classifyInfraError('O agente "context" excedeu o limite de 8 passos')).toBeUndefined();
+    expect(classifyInfraError('Arquivo de teste não encontrado (linha 401)')).toBeUndefined();
+    expect(classifyInfraError(undefined)).toBeUndefined();
   });
 
   it('--only sem correspondência é erro', async () => {

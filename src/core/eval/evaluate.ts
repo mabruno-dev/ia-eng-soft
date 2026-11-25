@@ -8,6 +8,7 @@ import { type PipelineEvent, runPipeline as defaultRunPipeline, type RunPipeline
 import type { Asker, LLMClient, PipelineConfig, RunRecord } from '../types';
 import { componentName, type EvalRun, renderSummary, type SummaryMeta, toCsv } from './aggregate';
 import { currentLock, describeLock } from '../runLock';
+import { classifyInfraError, type InfraErrorKind } from '../llmErrors';
 import { CONFIG_LABELS, type ConfigLabel, type EvalConfig, pipelineConfigFor } from './config';
 
 export type EvalProgress =
@@ -46,6 +47,25 @@ export interface EvaluateResult {
   csvPath: string;
   summaryPath: string;
   summary: string;
+}
+
+/**
+ * Erro de infraestrutura (sem créditos, chave recusada, rede…): a avaliação inteira é abortada
+ * e o RunRecord do run não é gravado (não é resultado da pipeline).
+ */
+export class EvalInfraError extends Error {
+  constructor(
+    readonly kind: InfraErrorKind,
+    readonly label: string,
+    readonly detail: string,
+    readonly component: string,
+    readonly config: ConfigLabel,
+    readonly repetition: number,
+    readonly outDir: string,
+  ) {
+    super(`${componentName(component)} ${config} #${repetition}: ${label} — ${detail}`);
+    this.name = 'EvalInfraError';
+  }
 }
 
 /** Arquivo salvo por run em <outDir>/records. */
@@ -121,7 +141,8 @@ export async function evaluate(opts: EvaluateOptions): Promise<EvaluateResult> {
           const file = join(recordsDir, recordFileName(component, label, repetition));
           if (opts.resume && existsSync(file)) {
             const stored = loadStoredRuns(outDir).find((r) => r.record.component === component && r.config === label && r.repetition === repetition);
-            if (stored) {
+            // Runs com status ERROR nunca são reaproveitados: são refeitos.
+            if (stored && stored.record.status !== 'ERROR') {
               opts.onProgress?.({ type: 'run-reused', component, config: label, repetition, index, total, record: stored.record });
               continue;
             }
@@ -141,6 +162,8 @@ export async function evaluate(opts: EvaluateOptions): Promise<EvaluateResult> {
             ...(asker ? { asker } : {}),
             ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
           });
+          const infra = record.status === 'ERROR' ? classifyInfraError(record.error) : undefined;
+          if (infra) throw new EvalInfraError(infra.kind, infra.label, record.error ?? '', component, label, repetition, outDir);
           const stored: StoredRun = { component, config: label, repetition, record };
           writeFileSync(file, JSON.stringify(stored, null, 2) + '\n', 'utf8');
           rmSync(join(config.workspace, record.testFilePath ?? testRel), { force: true });

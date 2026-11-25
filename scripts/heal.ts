@@ -1,5 +1,5 @@
 // Roda o loop de self-healing (Executor ⇄ Reparador) no workspace e mostra o histórico e o trace do Reparador.
-// Uso: npm run heal -- <componente> [--workspace fixtures/sample-app] [--max-iter 3] [--model gpt-4o-mini] [--keep]
+// Uso: npm run heal -- <componente> [--workspace fixtures/sample-app] [--max-iter 3] [--model gpt-4o] [--keep]
 //
 // Com OPENAI_API_KEY: Contexto (01) → Gerador (03) → healLoop, tudo com LLM real.
 // Sem a chave (só LoginForm): Jest REAL + LLM roteirizado. O teste inicial tem um bug de async e o Reparador
@@ -41,7 +41,7 @@ const program = new Command()
   .argument('<component>', 'caminho do componente, relativo ao workspace')
   .option('--workspace <dir>', 'raiz do workspace', 'fixtures/sample-app')
   .option('--max-iter <n>', 'máximo de iterações de reparo', '3')
-  .option('--model <model>', 'modelo OpenAI', process.env.OPENAI_MODEL ?? 'gpt-4o-mini')
+  .option('--model <model>', 'modelo OpenAI', process.env.OPENAI_MODEL ?? 'gpt-4o')
   .option('--keep', 'mantém o arquivo de teste gerado no workspace')
   .action(async (component: string, opts: { workspace: string; maxIter: string; model: string; keep?: boolean }) => {
     const real = !!process.env.OPENAI_API_KEY;

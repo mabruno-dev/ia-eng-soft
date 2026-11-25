@@ -22,7 +22,10 @@ O desenvolvedor dono do componente. Ele tem pouco tempo: cada pergunta precisa v
 - Perguntas genéricas de teste ("quais cenários devo testar?", "quer testar acessibilidade?").
 - O que está evidente no código (ex.: o texto literal de um botão, o tipo de uma prop).
 - Coisas que o dev não tem como responder em uma linha.
-- Respostas "${'(pulou)'}" não viram regra: siga em frente.
+- O mesmo ponto duas vezes: cada pergunta deve tratar de um ponto DIFERENTE (outra regra, outro limite, outra mensagem).
+  Não reformule uma pergunta já feita nem pergunte de novo algo já coberto por uma resposta anterior ou por read_rules;
+  a pergunta de acompanhamento só serve para esclarecer uma resposta vaga, nunca para repetir a mesma pergunta.
+- Respostas "${'(pulou)'}" não viram regra: siga para outro ponto (não insista no mesmo).
 
 # Output definition
 Quando terminar, responda APENAS com o JSON (sem chamar ferramentas):

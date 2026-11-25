@@ -1,5 +1,5 @@
 // Executa só o agente Executor (04) sobre um arquivo de teste existente e mostra ExecResult + diagnóstico.
-// Uso: npm run execute -- <componente> <arquivoDeTeste> [--workspace fixtures/sample-app] [--model gpt-4o-mini]
+// Uso: npm run execute -- <componente> <arquivoDeTeste> [--workspace fixtures/sample-app] [--model gpt-4o]
 // Sem OPENAI_API_KEY usa um LLM substituto mecânico (chama run_jest uma vez e devolve category null),
 // útil para ver o Jest real + a verificação cruzada do regex sem rede.
 import { Command } from 'commander';
@@ -21,7 +21,7 @@ const program = new Command()
   .argument('<component>', 'caminho do componente, relativo ao workspace')
   .argument('<testFile>', 'arquivo de teste, relativo ao workspace')
   .option('--workspace <dir>', 'raiz do workspace', 'fixtures/sample-app')
-  .option('--model <model>', 'modelo OpenAI', process.env.OPENAI_MODEL ?? 'gpt-4o-mini')
+  .option('--model <model>', 'modelo OpenAI', process.env.OPENAI_MODEL ?? 'gpt-4o')
   .action(async (component: string, testFile: string, opts: { workspace: string; model: string }) => {
     const real = !!process.env.OPENAI_API_KEY;
     const llm = new MeteredLLM(real ? new OpenAIClient({ model: opts.model }) : standInLLM(testFile, component));

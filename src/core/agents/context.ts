@@ -6,6 +6,7 @@ import type { TraceWriter } from '../agent/trace';
 import type { AgentMeter } from '../metrics';
 import { CONTEXT_SYSTEM_PROMPT, contextUserPrompt } from '../prompts/context';
 import { createCodeTools, type ImportClosure, importClosure } from '../tools/code';
+import { withCallCache } from '../tools/callCache';
 import { getWorkspace, isRelativeSpecifier, packageName, type Workspace, WorkspaceError } from '../tools/workspace';
 import type { ContextResult, ImportInfo, LLMClient } from '../types';
 
@@ -135,7 +136,8 @@ export async function buildContext(opts: BuildContextOptions): Promise<ContextRe
 
   const closure = importClosure(ws, componentAbs);
   const toolSpecifiers = new Set<string>();
-  const tools = recordSpecifiers(createCodeTools(ws), toolSpecifiers);
+  // Chamadas repetidas (mesmos argumentos) respondem do cache com aviso, sem gastar o agente em loops.
+  const tools = recordSpecifiers(withCallCache(createCodeTools(ws)), toolSpecifiers);
 
   // Validação semântica dentro do loop: os erros voltam ao agente, que ainda pode chamar ferramentas.
   const finalSchema = finalSchemaBase.superRefine((ans, ctx) => {

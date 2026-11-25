@@ -7,7 +7,7 @@ Escopo (imposto em código): você explora SOMENTE para baixo no grafo de depend
 
 Como trabalhar:
 1. Comece por analyze_component e list_imports no arquivo do componente.
-2. Siga os imports LOCAIS (resolvedPath) com list_imports até a profundidade máxima informada (o componente é a profundidade 0; seus imports diretos, 1). Não visite o mesmo arquivo duas vezes (há ciclos). Ignore pacotes externos na exploração.
+2. Siga os imports LOCAIS (resolvedPath) com list_imports até a profundidade máxima informada (o componente é a profundidade 0; seus imports diretos, 1). Não visite o mesmo arquivo duas vezes (há ciclos) nem repita uma chamada com os mesmos argumentos (o resultado não muda). Ignore pacotes externos na exploração: list_imports e relative_specifier só aceitam arquivos locais existentes; para pacotes use resolve_import.
 3. Use read_file quando precisar entender um módulo do grafo (ex.: o que um serviço chama, o que um contexto expõe, se um hook depende de Provider). search_code só serve para localizar algo DENTRO dos módulos do grafo, nunca para achar usos do componente.
 4. Decida o que o teste precisará importar: o próprio componente, Providers/contexts necessários para renderizá-lo, e os módulos que serão mockados.
 5. mockTargets = módulos do fecho que fazem I/O (rede: fetch, axios; localStorage acessado diretamente) ou mantêm estado global compartilhado (Context providers, stores). Componentes puros (sem esses módulos no grafo, ex.: um Button sem imports locais) têm mockTargets VAZIO. São especificadores EXATOS, do ponto de vista do arquivo de teste (o Gerador usa jest.mock nos de I/O; stores e Contexts são usados reais).

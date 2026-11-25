@@ -90,6 +90,42 @@ describe('buildContext (agente 01)', () => {
     expect(llm.byTag().context!.calls).toBe(5);
   });
 
+  it('list_imports/relative_specifier: erro curto para pacote externo, alias e arquivo inexistente; chamada repetida vem do cache', async () => {
+    const fake = new FakeLLM({
+      context: [
+        call('list_imports', { file: 'react' }),
+        call('list_imports', { file: '@/state/CartContext' }),
+        call('list_imports', { file: 'src/services/cartApi.ts' }),
+        call('relative_specifier', { fromTestFile: TEST_FILE, targetFile: '@testing-library/react' }),
+        ...exploration(),
+        call('list_imports', { file: COMPONENT }), // repetida (mesmos argumentos)
+        call('list_imports', { file: 'react' }), // erro repetido
+        call('list_imports', { file: 'src\\components\\CartSummary.tsx ' }), // mesmos argumentos após normalizar
+        finalAnswer(),
+      ],
+    });
+    const meter = new AgentMeter();
+
+    const ctx = await buildContext({ workspaceRoot: FIXTURE, componentPath: COMPONENT, llm: fake, meter, maxSteps: 12 });
+
+    const errors = toolResults(fake.requests.at(-1)!.messages).map((r) => r.error as string | undefined);
+    expect(errors[0]).toBe('a ferramenta "list_imports" falhou: react é pacote externo: use resolve_import');
+    expect(errors[1]).toMatch(/@\/state\/CartContext é alias de import: use resolve_import/);
+    expect(errors[2]).toMatch(/src\/services\/cartApi\.ts não existe no workspace: use os caminhos devolvidos por list_imports\/resolve_import$/);
+    expect(errors[3]).toMatch(/@testing-library\/react é pacote externo: use resolve_import/);
+    expect(errors.slice(4, 8)).toEqual([undefined, undefined, undefined, undefined]);
+    expect(errors[9]).toBe('a ferramenta "list_imports" falhou: chamada repetida: use o resultado anterior — react é pacote externo: use resolve_import');
+
+    const results = toolResults(fake.requests.at(-1)!.messages);
+    const { warning, ...cached } = results[8]!;
+    expect(warning).toBe('chamada repetida: use o resultado anterior');
+    expect(cached).toEqual(results[4]); // mesmo resultado da 1ª chamada
+    expect(results[10]!.warning).toBe('chamada repetida: use o resultado anterior');
+
+    expect(ctx.componentName).toBe('CartSummary');
+    expect(meter.agents()).toEqual({ context: { steps: 12, toolCalls: 11 } });
+  });
+
   it('rejeita specifier inventado e devolve o erro ao agente, que corrige com a ferramenta', async () => {
     const fake = new FakeLLM({
       context: [

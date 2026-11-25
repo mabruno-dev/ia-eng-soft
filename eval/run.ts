@@ -5,11 +5,18 @@ import { join, relative, resolve } from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
 import { componentName } from '../src/core/eval/aggregate';
 import { loadEvalConfig } from '../src/core/eval/config';
-import { evaluate, type EvalProgress, localDate } from '../src/core/eval/evaluate';
+import { EvalInfraError, evaluate, type EvalProgress, localDate } from '../src/core/eval/evaluate';
 import { formatEvent } from '../src/core/progressFormat';
 import { OpenAIClient } from '../src/llm/openai';
 
 const RESULTS_DIR = resolve('eval', 'results');
+
+const HINTS: Record<EvalInfraError['kind'], string> = {
+  quota: 'Adicione créditos/ajuste o limite de gastos na conta do provedor antes de retomar.',
+  auth: 'Confira a variável OPENAI_API_KEY (chave válida e ativa) antes de retomar.',
+  rate_limit: 'Aguarde alguns minutos (ou aumente o limite da conta) antes de retomar.',
+  network: 'Verifique a conexão com a internet / OPENAI_BASE_URL antes de retomar.',
+};
 
 const int = (name: string) => (v: string) => {
   const n = Number.parseInt(v, 10);
@@ -87,6 +94,21 @@ const program = new Command()
   });
 
 program.parseAsync().catch((err: unknown) => {
+  if (err instanceof EvalInfraError) {
+    const dir = relative(process.cwd(), err.outDir) || err.outDir;
+    console.error(
+      [
+        '',
+        `✗ Avaliação ABORTADA por erro de infraestrutura em ${componentName(err.component)} ${err.config} #${err.repetition}: ${err.label}.`,
+        `  Erro: ${err.detail.split('\n')[0]}`,
+        `  O RunRecord deste run NÃO foi gravado; os runs já concluídos estão em ${dir}.`,
+        `  ${HINTS[err.kind]}`,
+        `  Para retomar de onde parou: npm run eval -- --resume ${dir}`,
+      ].join('\n'),
+    );
+    process.exitCode = 2;
+    return;
+  }
   console.error(`Erro: ${err instanceof Error ? err.message : String(err)}`);
   process.exitCode = 1;
 });

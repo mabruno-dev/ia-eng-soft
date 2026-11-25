@@ -175,8 +175,11 @@ export interface RunRecord {
 ```
 npm run build        # esbuild da extensão + tsc --noEmit
 npm test             # vitest
-npm run cli -- <componente> --workspace <dir> [--no-heal] [--no-elicit] [--no-verify] [--max-iter 3]
+npm run cli -- <componente> --workspace <dir> [--no-heal] [--no-elicit] [--no-verify] [--max-iter 3] [--model gpt-4o] [--answers eval/answers.json]
+npm run eval -- [--only LoginForm] [--runs 1] [--resume [dir]]
 ```
+
+Modelo padrão (CLI e extensão com provider `openai`): **`gpt-4o`** (`--model`, variável `OPENAI_MODEL` ou configuração `reactest.model`).
 
 ## Definição de pronto de cada etapa
 

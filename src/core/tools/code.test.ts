@@ -100,7 +100,7 @@ describe('relative_specifier', () => {
   });
 
   it('exige que o alvo exista', async () => {
-    await expect(run('src/components/A.test.tsx', 'src/components/Inexistente.tsx')).rejects.toThrow(/não encontrado/);
+    await expect(run('src/components/A.test.tsx', 'src/components/Inexistente.tsx')).rejects.toThrow(/Inexistente.tsx não existe no workspace/);
   });
 });
 
