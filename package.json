@@ -106,6 +106,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --exclude \"**/*.integration.test.ts\"",
     "cli": "tsx src/cli.ts",
+    "eval": "tsx eval/run.ts",
     "context": "tsx scripts/context.ts",
     "execute": "tsx scripts/execute.ts",
     "heal": "tsx scripts/heal.ts",

@@ -1,0 +1,12 @@
+{
+  "answers": {
+    "força": "Forte: 12 ou mais caracteres com pelo menos um número E um símbolo. Média: 8 ou mais caracteres com número OU símbolo. Caso contrário, fraca. O indicador só aparece quando há algum valor digitado.",
+    "senha": "No login a senha é obrigatória e deve ter pelo menos 8 caracteres.",
+    "e-mail": "O e-mail é obrigatório e precisa ter formato válido (nome@dominio.tld).",
+    "cupom": "Só existe o cupom PROMO10 (sem diferenciar maiúsculas/minúsculas, ignorando espaços), que dá 10% de desconto sobre o subtotal. Qualquer outro código mostra 'Cupom inválido.'.",
+    "desconto": "O desconto é de 10% do subtotal quando o cupom PROMO10 está aplicado; o total é subtotal menos desconto.",
+    "filtro": "O filtro de usuários ignora maiúsculas/minúsculas e espaços nas pontas, e busca por nome ou e-mail.",
+    "tema": "O tema padrão é claro; o botão alterna entre claro e escuro e a escolha persiste no localStorage.",
+    "desabilitado": "Um botão desabilitado não dispara onClick."
+  }
+}

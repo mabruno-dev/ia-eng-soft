@@ -1,0 +1,16 @@
+{
+  "workspace": "fixtures/sample-app",
+  "components": [
+    "src/components/Button.tsx",
+    "src/components/LoginForm.tsx",
+    "src/components/UserList.tsx",
+    "src/components/CartSummary.tsx",
+    "src/components/ThemeToggle.tsx",
+    "src/components/PasswordField.tsx"
+  ],
+  "runsPerConfig": 3,
+  "maxIterations": 3,
+  "maxAgentSteps": 8,
+  "model": "gpt-4o",
+  "answersFile": "eval/answers.json"
+}
