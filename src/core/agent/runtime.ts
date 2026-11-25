@@ -106,14 +106,15 @@ export function describeJsonError(err: unknown, src: string): string {
   return `${msg}${where}; trecho: «${snippet}»`;
 }
 
-function validateFinal<T>(text: string, schema: z.ZodType<T>): { ok: true; value: T } | { ok: false; error: string } {
+/** Valida a resposta final (assíncrono: o schema pode ter refinamentos async, ex.: typecheck em código). */
+async function validateFinal<T>(text: string, schema: z.ZodType<T>): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
   let data: unknown;
   try {
     data = extractJson(text);
   } catch (err) {
     return { ok: false, error: errMsg(err) };
   }
-  const parsed = schema.safeParse(data);
+  const parsed = await schema.safeParseAsync(data);
   return parsed.success ? { ok: true, value: parsed.data } : { ok: false, error: z.prettifyError(parsed.error) };
 }
 
@@ -172,7 +173,7 @@ export async function runAgent<T>(opts: RunAgentOptions<T>): Promise<RunAgentRes
         continue;
       }
 
-      const v = validateFinal(res.text, finalSchema);
+      const v = await validateFinal(res.text, finalSchema);
       if (v.ok) {
         await trace?.write({ agent: name, step: steps, kind: 'final', text, llmMs, ms: now() - stepStart });
         return { output: v.value, steps, toolCalls };

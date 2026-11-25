@@ -17,7 +17,7 @@ import type { ContextResult, LLMClient, Scenario, TestPlan } from '../types';
 
 export const GENERATOR_PLAN_AGENT = 'generator.plan';
 export const GENERATOR_CODE_AGENT = 'generator.code';
-const CODE_MAX_REPAIRS = 2;
+const CODE_MAX_REPAIRS = 3;
 
 export interface GenerateTestOptions {
   ctx: ContextResult;
@@ -185,41 +185,39 @@ export async function generateTest(opts: GenerateTestOptions): Promise<GenerateT
   }
 
   // ---- Fase 2: código ----
-  let validateCalls = 0;
+  // validate_imports e typecheck_test são ferramentas OPCIONAIS de autoverificação. A garantia é do código:
+  // a resposta final é checada aqui (imports + typecheck em memória), sem exigir que o modelo as tenha chamado.
   const validateTool = validateImportsTool(ctx, workspaceRoot);
-  // Resultado do typecheck por código (normalizado): a entrega final precisa ter sido checada e estar sem erros.
-  const typechecked = new Map<string, TypecheckResult>();
+  const typechecked = new Map<string, TypecheckResult>(); // cache por código normalizado
   const check = opts.typecheck ?? createTypechecker(workspaceRoot, ctx.testFilePath);
-  const typecheckTool = typecheckTestTool(async (code) => {
+  const typecheckCode = async (code: string): Promise<TypecheckResult> => {
+    const hit = typechecked.get(code);
+    if (hit) return hit;
     const r = await check(code);
     typechecked.set(code, r);
     return r;
-  });
+  };
+  const typecheckTool = typecheckTestTool(typecheckCode);
   const tools: AgentTool[] = [
     readFileTool(ws),
-    {
-      ...validateTool,
-      run: async (args: { code: string }) => {
-        validateCalls++;
-        return validateTool.run({ code: stripCodeFences(args.code) });
-      },
-    },
+    { ...validateTool, run: async (args: { code: string }) => validateTool.run({ code: stripCodeFences(args.code) }) },
     { ...typecheckTool, run: async (args: { code: string }) => typecheckTool.run({ code: stripCodeFences(args.code) }) },
   ];
-  const codeSchema = z.object({ code: z.string().min(1) }).superRefine((out, issue) => {
-    if (validateCalls === 0) {
-      issue.addIssue({ code: 'custom', path: ['code'], message: 'chame a ferramenta validate_imports com o rascunho antes de entregar' });
-    }
+  const codeSchema = z.object({ code: z.string().min(1) }).superRefine(async (out, issue) => {
     const code = stripCodeFences(out.code);
-    const tc = typechecked.get(code);
-    if (!tc) {
-      issue.addIssue({ code: 'custom', path: ['code'], message: 'chame typecheck_test com o código final EXATO que vai entregar (e corrija os erros) antes de responder' });
-    } else if (!tc.ok) {
-      const list = tc.diagnostics.map((d) => `${d.location} ${d.code}: ${d.message}`).join('; ');
-      issue.addIssue({ code: 'custom', path: ['code'], message: `o código final tem ${tc.errors} erro(s) de tipo: ${list}. Corrija (nunca omita props obrigatórias) e chame typecheck_test de novo` });
-    }
+    // Imports (validateImports) e demais guardrails do arquivo.
     for (const p of checkGeneratedCode(code, ctx, plan, workspaceRoot)) {
       issue.addIssue({ code: 'custom', path: ['code'], message: p });
+    }
+    // Typecheck em memória (ts-morph) do código EXATO entregue.
+    const tc = await typecheckCode(code);
+    if (!tc.ok) {
+      const list = tc.diagnostics.map((d) => `${d.location} ${d.code}: ${d.message}`).join('; ');
+      issue.addIssue({
+        code: 'custom',
+        path: ['code'],
+        message: `o código final tem ${tc.errors} erro(s) de tipo: ${list}. Corrija (nunca omita props obrigatórias; sem @ts-ignore/as any)`,
+      });
     }
   });
 

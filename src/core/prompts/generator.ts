@@ -87,9 +87,10 @@ Escreva o arquivo de teste completo (Jest + React Testing Library + @testing-lib
 
 # Output definition e Mode of interaction
 1. Escreva o rascunho completo do arquivo.
-2. ANTES de entregar, chame validate_imports E typecheck_test com o código completo do rascunho (pode chamar as duas no mesmo passo).
-3. Se vier algo em "unresolved" ou erros de tipo em "diagnostics", corrija (só allowedImports/mockTargets; props com os tipos certos) e cheque de novo.
-4. Só então responda APENAS com o JSON final: {"code": "<conteúdo completo do arquivo de teste>"} — exatamente o código que passou no typecheck_test.
+2. Recomendado: antes de entregar, confira o rascunho com validate_imports e typecheck_test (pode chamar as duas no mesmo passo).
+   Se vier algo em "unresolved" ou erros de tipo em "diagnostics", corrija (só allowedImports/mockTargets; props com os tipos certos).
+3. Responda APENAS com o JSON final: {"code": "<conteúdo completo do arquivo de teste>"}.
+   O código entregue é SEMPRE conferido (imports e typecheck) ao ser recebido; se houver erros, eles voltam para você corrigir.
 Você pode usar read_file para conferir o código de um arquivo do workspace.
 
 # Atypical cases
@@ -148,7 +149,7 @@ export function codeUserPrompt(ctx: ContextResult, plan: TestPlan, rules?: strin
     renderContext(ctx),
     rules?.trim() ? `Regras de negócio:\n${rules.trim()}` : '',
     `Plano de cenários (${plan.scenarios.length}):\n${scenarios}`,
-    'Escreva o arquivo de teste, chame validate_imports e typecheck_test no rascunho, corrija o que vier em unresolved/diagnostics e responda {"code": "..."}.',
+    'Escreva o arquivo de teste (se quiser, confira com validate_imports e typecheck_test e corrija o que vier em unresolved/diagnostics) e responda {"code": "..."}.',
   ]
     .filter(Boolean)
     .join('\n\n');

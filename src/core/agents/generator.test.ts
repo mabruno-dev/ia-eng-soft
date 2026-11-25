@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { FakeLLM } from '../../llm/fake';
+import { AgentOutputError } from '../agent/runtime';
 import { AgentMeter } from '../metrics';
 import { FEW_SHOT_EXAMPLES } from '../prompts/fewshot';
 import { GENERATOR_CODE_SYSTEM_PROMPT, GENERATOR_PLAN_SYSTEM_PROMPT } from '../prompts/generator';
@@ -183,13 +184,25 @@ describe('generateTest (agente 03)', () => {
     expect(fake.requestsFor(GENERATOR_PLAN_AGENT)[1]!.messages.at(-1)!.content).toMatch(/inclua cenários "async"/);
   });
 
-  it('código entregue sem chamar validate_imports é recusado', async () => {
+  it('entrega direta sem chamar ferramentas é aceita: imports e typecheck são conferidos em código na resposta final', async () => {
+    const checked: string[] = [];
+    const typecheck = (code: string): TypecheckResult => {
+      checked.push(code);
+      return { ok: true, errors: 0, diagnostics: [] };
+    };
     const fake = new FakeLLM({
       [GENERATOR_PLAN_AGENT]: [planJson()],
-      [GENERATOR_CODE_AGENT]: [JSON.stringify({ code: goodCode }), call('validate_imports', { code: goodCode }), call('typecheck_test', { code: goodCode }), JSON.stringify({ code: goodCode })],
+      // 1ª entrega com import inventado (sem chamar validate_imports): o código detecta e devolve
+      [GENERATOR_CODE_AGENT]: [JSON.stringify({ code: draftWithBadImport }), JSON.stringify({ code: goodCode })],
     });
-    await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck: tcOk, llm: fake });
-    expect(fake.requestsFor(GENERATOR_CODE_AGENT)[1]!.messages.at(-1)!.content).toMatch(/chame a ferramenta validate_imports/);
+    const meter = new AgentMeter();
+    const res = await generateTest({ ctx, workspaceRoot: FIXTURE, typecheck, llm: fake, meter });
+    const feedback = fake.requestsFor(GENERATOR_CODE_AGENT)[1]!.messages.at(-1)!.content;
+    expect(feedback).toMatch(/import não resolvido na linha \d+: "\.\.\/componentes\/inexistente"/);
+    expect(feedback).not.toMatch(/chame/);
+    expect(res.code).toBe(goodCode);
+    expect(checked).toEqual([draftWithBadImport, goodCode]); // typecheck rodado pelo código nas duas entregas
+    expect(meter.agents()[GENERATOR_CODE_AGENT]).toEqual({ steps: 2, toolCalls: 0 });
   });
 
   it('o prompt contém os specifiers de allowedImports, os mockTargets e as regras', async () => {
@@ -286,7 +299,7 @@ describe('ThemeToggle', () => {
     expect(plain.requests.some((r) => 'jsonMode' in r)).toBe(false);
   });
 
-  it('typecheck_test: código que omite children recebe TS2741 e o agente corrige antes de entregar (regressão do Button)', async () => {
+  it('typecheck em código na resposta final: entrega que omite children recebe TS2741 e o agente corrige (regressão do Button)', async () => {
     const buttonCtx: ContextResult = {
       ...ctx,
       componentPath: 'src/components/Button.tsx',
@@ -324,16 +337,16 @@ describe('Button', () => {
       code: 'TS2741',
       message: "Property 'children' is missing in type '{}' but required in type 'ButtonProps'.",
     };
-    const typecheck = (code: string): TypecheckResult =>
-      code.includes('<Button></Button>') ? { ok: false, errors: 1, diagnostics: [TS2741] } : { ok: true, errors: 0, diagnostics: [] };
+    const checked: string[] = [];
+    const typecheck = (code: string): TypecheckResult => {
+      checked.push(code);
+      return code.includes('<Button></Button>') ? { ok: false, errors: 1, diagnostics: [TS2741] } : { ok: true, errors: 0, diagnostics: [] };
+    };
     const fake = new FakeLLM({
       [GENERATOR_PLAN_AGENT]: [buttonPlan],
       [GENERATOR_CODE_AGENT]: [
-        call('validate_imports', { code: bad }),
-        call('typecheck_test', { code: bad }),
-        // tenta entregar com erro: o código recusa e devolve os diagnósticos
+        // entrega direto, sem typecheck_test (foi o que aconteceu no run real): o código checa e devolve o TS2741
         JSON.stringify({ code: bad }),
-        call('typecheck_test', { code: fixed }),
         JSON.stringify({ code: fixed }),
       ],
     });
@@ -341,26 +354,36 @@ describe('Button', () => {
     const res = await generateTest({ ctx: buttonCtx, workspaceRoot: FIXTURE, llm: fake, typecheck });
 
     const reqs = fake.requestsFor(GENERATOR_CODE_AGENT);
-    expect(lastToolResult(reqs[2]!.messages)).toEqual({ ok: false, errors: 1, diagnostics: [TS2741] });
-    const feedback = reqs[3]!.messages.at(-1)!.content;
+    expect(reqs).toHaveLength(2);
+    const feedback = reqs[1]!.messages.at(-1)!.content;
     expect(feedback).toMatch(/1 erro\(s\) de tipo: src\/components\/Button\.test\.tsx:11 TS2741: Property 'children' is missing/);
+    expect(checked).toEqual([bad, fixed]);
     expect(res.code).toBe(fixed);
     expect(res.code).not.toContain('<Button></Button>');
   });
 
-  it('código final diferente do que passou no typecheck_test é recusado', async () => {
+  it('typecheck_test segue disponível como autoverificação opcional; resultado reaproveitado na checagem final', async () => {
+    let calls = 0;
+    const typecheck = (): TypecheckResult => {
+      calls++;
+      return { ok: true, errors: 0, diagnostics: [] };
+    };
     const fake = new FakeLLM({
       [GENERATOR_PLAN_AGENT]: [planJson()],
-      [GENERATOR_CODE_AGENT]: [
-        call('validate_imports', { code: goodCode }),
-        call('typecheck_test', { code: draftWithBadImport }),
-        JSON.stringify({ code: goodCode }),
-        call('typecheck_test', { code: goodCode }),
-        JSON.stringify({ code: goodCode }),
-      ],
+      [GENERATOR_CODE_AGENT]: [call('typecheck_test', { code: goodCode }), JSON.stringify({ code: goodCode })],
     });
-    await generateTest({ ctx, workspaceRoot: FIXTURE, llm: fake, typecheck: tcOk });
-    expect(fake.requestsFor(GENERATOR_CODE_AGENT)[3]!.messages.at(-1)!.content).toMatch(/chame typecheck_test com o código final EXATO/);
+    const res = await generateTest({ ctx, workspaceRoot: FIXTURE, llm: fake, typecheck });
+    expect(lastToolResult(fake.requestsFor(GENERATOR_CODE_AGENT)[1]!.messages)).toEqual({ ok: true, errors: 0, diagnostics: [] });
+    expect(res.code).toBe(goodCode);
+    expect(calls).toBe(1); // mesmo código: a checagem final usa o cache
+  });
+
+  it('até 3 reparos da resposta final; o 4º erro é AgentOutputError', async () => {
+    const tcBad = (): TypecheckResult => ({ ok: false, errors: 1, diagnostics: [{ location: 'x:1', code: 'TS2322', message: 'tipo errado' }] });
+    const bad = JSON.stringify({ code: goodCode });
+    const ok = new FakeLLM({ [GENERATOR_PLAN_AGENT]: [planJson()], [GENERATOR_CODE_AGENT]: [bad, bad, bad, bad] });
+    await expect(generateTest({ ctx, workspaceRoot: FIXTURE, llm: ok, typecheck: tcBad })).rejects.toBeInstanceOf(AgentOutputError);
+    expect(ok.requestsFor(GENERATOR_CODE_AGENT)).toHaveLength(4);
   });
 });
 
