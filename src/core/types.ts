@@ -100,4 +100,22 @@ export interface RunRecord {
   agents: Record<string, { steps: number; toolCalls: number }>;      // RQ5
   timings: { totalMs: number; perAgentMs: Record<string, number> };  // RQ5
   elicitation?: { questions: number; answered: number; derivedCases: number }; // RQ4
+  // ---- Campos auxiliares (opcionais; a avaliação não depende deles) ----
+  testFilePath?: string;                  // arquivo de teste gravado (relativo ao workspace)
+  history?: RunIteration[];               // uma entrada por iteração de reparo
+  error?: string;                         // mensagem quando status = 'ERROR'
+}
+
+export interface RunIteration {
+  iteration: number;
+  category: FailureCategory | null;
+  summary: string;
+  repairStatus: 'REPAIRED' | 'SUSPECTED_COMPONENT_BUG' | 'GAVE_UP';
+  reasoning: string;
+  rejectedRepairs: number;
+}
+
+/** Pergunta ao desenvolvedor (UI da extensão, terminal ou arquivo de respostas). undefined = sem resposta. */
+export interface Asker {
+  ask(question: string, options?: string[]): Promise<string | undefined>;
 }

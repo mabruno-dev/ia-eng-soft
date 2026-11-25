@@ -129,7 +129,8 @@ describe('search_code', () => {
   });
 });
 
-describe('analyze_component', () => {
+// O 1º uso monta o projeto ts-morph com os tipos de node_modules: lento se os testes de integração (Jest real) rodam em paralelo.
+describe('analyze_component', { timeout: 30_000 }, () => {
   const run = (file: string) => analyzeComponentTool(ws).run({ file }) as Promise<ComponentAnalysis>;
 
   it('LoginForm: props, hooks e chamada de API em /services', async () => {

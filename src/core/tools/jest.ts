@@ -190,7 +190,8 @@ export async function runJest(workspaceRoot: string, args: RunJestArgs, opts: Ru
     const { output, timedOut } = await new Promise<{ output: string; timedOut: boolean }>((done, fail) => {
       const child = spawn(process.execPath, cliArgs, {
         cwd: ws.root,
-        env: { ...process.env, CI: 'true', FORCE_COLOR: '0', NODE_ENV: 'test' },
+        // Dentro do VS Code, process.execPath é o Electron: ELECTRON_RUN_AS_NODE o faz agir como Node.
+        env: { ...process.env, CI: 'true', FORCE_COLOR: '0', NODE_ENV: 'test', ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) },
         windowsHide: true,
         detached: process.platform !== 'win32',
       });

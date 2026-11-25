@@ -58,6 +58,8 @@ export interface HealLoopOptions {
   execute?: ExecuteFn;
   /** Reparador injetável (padrão: agente 05). */
   repair?: RepairFn;
+  /** Chamado ao fim de cada iteração de reparo (progresso). */
+  onIteration?: (h: HealIteration) => void;
 }
 
 // ---- Funções puras ----
@@ -178,6 +180,7 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
       rejectedRepairs: r.rejectedRepairs,
       wrote: r.wrote,
     });
+    opts.onIteration?.(history.at(-1)!);
     previousAttempts.push(`iteração ${iterations} [${diagnosis.category ?? '-'}] ${firstErrorLine(exec)} → ${r.status}: ${r.reasoning}`);
 
     if (r.status === 'SUSPECTED_COMPONENT_BUG') {

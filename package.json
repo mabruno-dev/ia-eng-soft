@@ -15,9 +15,89 @@
     "commands": [
       {
         "command": "reactest.generate",
-        "title": "ReacTest: Gerar testes para o componente"
+        "title": "Gerar testes (Agent)",
+        "category": "ReacTest"
+      },
+      {
+        "command": "reactest.setOpenAIKey",
+        "title": "Definir chave OpenAI",
+        "category": "ReacTest"
+      },
+      {
+        "command": "reactest.showOutput",
+        "title": "Mostrar log dos agentes",
+        "category": "ReacTest"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "reactest.generate",
+          "when": "editorLangId == typescriptreact"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "reactest.generate",
+          "when": "resourceExtname == .tsx",
+          "group": "navigation@90"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "reactest.generate",
+          "when": "resourceExtname == .tsx",
+          "group": "navigation@90"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ReacTest-Agent",
+      "properties": {
+        "reactest.provider": {
+          "type": "string",
+          "enum": [
+            "vscode",
+            "openai"
+          ],
+          "default": "vscode",
+          "enumDescriptions": [
+            "Modelos do GitHub Copilot via API vscode.lm (padrão)",
+            "API da OpenAI (chave em \"ReacTest: Definir chave OpenAI\")"
+          ],
+          "description": "Provedor do LLM usado pelos agentes."
+        },
+        "reactest.model": {
+          "type": "string",
+          "default": "",
+          "description": "Modelo. Copilot: família (ex.: gpt-4o, claude-sonnet-4); vazio = primeiro disponível. OpenAI: nome do modelo; vazio = gpt-4o-mini."
+        },
+        "reactest.maxIterations": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Máximo de iterações de self-healing (0 desativa o reparo)."
+        },
+        "reactest.maxAgentSteps": {
+          "type": "integer",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Máximo de passos (chamadas ao LLM) por agente."
+        },
+        "reactest.enableElicitation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Pergunta regras de negócio antes de gerar (agente 02)."
+        },
+        "reactest.enableVerifier": {
+          "type": "boolean",
+          "default": true,
+          "description": "Roda o Verificador (mutation testing e test smells, agente 06)."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "npm run build:ext && npm run typecheck",
@@ -44,5 +124,8 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.1"
-  }
+  },
+  "categories": [
+    "Testing"
+  ]
 }

@@ -163,6 +163,9 @@ export interface RunRecord {
   agents: Record<string, { steps: number; toolCalls: number }>;      // RQ5
   timings: { totalMs: number; perAgentMs: Record<string, number> };  // RQ5
   elicitation?: { questions: number; answered: number; derivedCases: number }; // RQ4
+  testFilePath?: string;                  // auxiliares (opcionais)
+  history?: RunIteration[];               // { iteration, category, summary, repairStatus, reasoning, rejectedRepairs }
+  error?: string;                         // quando status = 'ERROR'
 }
 ```
 
