@@ -189,9 +189,10 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       partial = {
         iterations: heal.iterations,
         rejectedRepairs: heal.rejectedRepairs,
+        alignedToBehavior: heal.alignedToBehavior,
         modificationRate: heal.modificationRate,
-        history: heal.history.map(({ iteration, category, summary, repairStatus, reasoning, rejectedRepairs }) => ({
-          iteration, category, summary, repairStatus, reasoning, rejectedRepairs,
+        history: heal.history.map(({ iteration, category, summary, repairStatus, reasoning, rejectedRepairs, alignedToBehavior }) => ({
+          iteration, category, summary, repairStatus, reasoning, rejectedRepairs, alignedToBehavior,
         })),
       };
     } else {
@@ -200,7 +201,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       exec = r.exec;
       status = exec.passed ? 'PASSED' : 'FAILED';
       finalCode = generatedCode;
-      partial = { iterations: 0, rejectedRepairs: 0, modificationRate: 0, history: [] };
+      partial = { iterations: 0, rejectedRepairs: 0, alignedToBehavior: 0, modificationRate: 0, history: [] };
     }
 
     // 06 — Verificador (ponto de extensão)
@@ -217,6 +218,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       modificationRate: partial.modificationRate ?? 0,
       coverage: exec.coverage,
       rejectedRepairs: partial.rejectedRepairs ?? 0,
+      alignedToBehavior: partial.alignedToBehavior ?? 0,
       testFilePath: tfp,
       history: partial.history ?? [],
     };
@@ -242,6 +244,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
       modificationRate: partial.modificationRate ?? 0,
       coverage: { ...ZERO },
       rejectedRepairs: partial.rejectedRepairs ?? 0,
+      alignedToBehavior: partial.alignedToBehavior ?? 0,
       ...(testFilePath ? { testFilePath } : {}),
       history: partial.history ?? [],
       error: message,

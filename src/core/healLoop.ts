@@ -8,6 +8,9 @@ import { getWorkspace } from './tools/workspace';
 import type { ContextResult, ExecResult, FailureCategory, LLMClient } from './types';
 
 export type HealStatus = 'PASSED' | 'FAILED' | 'SUSPECTED_COMPONENT_BUG';
+/** A mesma assinatura de erro em N execuções consecutivas encerra o loop. */
+export const REPEATED_ERROR_LIMIT = 3;
+
 export type StopReason = 'PASSED' | 'MAX_ITERATIONS' | 'REPEATED_ERROR' | 'SUSPECTED_COMPONENT_BUG' | 'GAVE_UP';
 
 export interface HealIteration {
@@ -21,6 +24,8 @@ export interface HealIteration {
   reasoning: string;
   rejectedRepairs: number; // recusas do guardrail nesta iteração
   wrote: boolean;
+  /** O Reparador alinhou a expectativa ao comportamento observado (sem evidência de defeito). */
+  alignedToBehavior: boolean;
 }
 
 export interface HealResult {
@@ -29,6 +34,8 @@ export interface HealResult {
   finalCode: string;
   iterations: number;
   rejectedRepairs: number;
+  /** Nº de iterações em que a expectativa foi alinhada ao comportamento observado. */
+  alignedToBehavior: number;
   history: HealIteration[];
   modificationRate: number;
   /** Última execução do Executor (números das ferramentas). */
@@ -114,7 +121,8 @@ export function modificationRate(generated: string, final: string): number {
 
 /**
  * Self-healing: Executor → passou? fim → Reparador → (SUSPECTED_COMPONENT_BUG? para) → Executor → ...
- * até maxIterations reparos. Para cedo se a mesma assinatura de erro aparecer em duas execuções seguidas.
+ * até maxIterations reparos. Para cedo se a mesma assinatura de erro aparecer em REPEATED_ERROR_LIMIT (3) execuções seguidas.
+ * Cada reparo recebe `previousAttempts`: o que os reparos anteriores tentaram e se a falha persistiu.
  */
 export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
   const { ctx, workspaceRoot, llm } = opts;
@@ -136,6 +144,7 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
   let rejectedRepairs = 0;
   let iterations = 0;
   let prevSignature: string | undefined;
+  let sameSignatureCount = 0;
   let stopReason: StopReason;
   let status: HealStatus;
   let { exec, diagnosis } = await execute({ iteration: 0 });
@@ -146,7 +155,13 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
       break;
     }
     const signature = errorSignature(exec, diagnosis.category);
-    if (prevSignature !== undefined && signature === prevSignature) {
+    sameSignatureCount = signature === prevSignature ? sameSignatureCount + 1 : 1;
+    if (previousAttempts.length) {
+      // resultado do último reparo, visto na reexecução
+      previousAttempts[previousAttempts.length - 1] += signature === prevSignature ? ' ⇒ a MESMA falha persistiu.' : ` ⇒ a falha mudou para: ${firstErrorLine(exec)}`;
+    }
+    prevSignature = signature;
+    if (sameSignatureCount >= REPEATED_ERROR_LIMIT) {
       [status, stopReason] = ['FAILED', 'REPEATED_ERROR'];
       break;
     }
@@ -179,9 +194,12 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
       reasoning: r.reasoning,
       rejectedRepairs: r.rejectedRepairs,
       wrote: r.wrote,
+      alignedToBehavior: r.alignedToBehavior,
     });
     opts.onIteration?.(history.at(-1)!);
-    previousAttempts.push(`iteração ${iterations} [${diagnosis.category ?? '-'}] ${firstErrorLine(exec)} → ${r.status}: ${r.reasoning}`);
+    previousAttempts.push(
+      `iteração ${iterations} [${diagnosis.category ?? '-'}] ${firstErrorLine(exec)} → ${r.status}${r.alignedToBehavior ? ' (alinhado ao comportamento)' : ''}: ${r.reasoning}`,
+    );
 
     if (r.status === 'SUSPECTED_COMPONENT_BUG') {
       [status, stopReason] = ['SUSPECTED_COMPONENT_BUG', 'SUSPECTED_COMPONENT_BUG'];
@@ -192,7 +210,6 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
       [status, stopReason] = ['FAILED', 'GAVE_UP'];
       break;
     }
-    prevSignature = signature;
     ({ exec, diagnosis } = await execute({ iteration: iterations }));
   }
 
@@ -203,6 +220,7 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
     finalCode,
     iterations,
     rejectedRepairs,
+    alignedToBehavior: history.filter((h) => h.alignedToBehavior).length,
     history,
     modificationRate: modificationRate(opts.generatedCode, finalCode),
     exec,

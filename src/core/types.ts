@@ -96,6 +96,7 @@ export interface RunRecord {
   mutation?: { score: number; killed: number; survived: number; timeout: number }; // RQ3
   smells?: string[];
   rejectedRepairs: number;                // RQ1: reparos indevidos barrados pelo guardrail
+  alignedToBehavior: number;              // RQ1: reparos que alinharam a expectativa ao comportamento observado (sem evidência de defeito)
   llm: { calls: number; inputTokens: number; outputTokens: number }; // RQ5
   agents: Record<string, { steps: number; toolCalls: number }>;      // RQ5
   timings: { totalMs: number; perAgentMs: Record<string, number> };  // RQ5
@@ -113,6 +114,7 @@ export interface RunIteration {
   repairStatus: 'REPAIRED' | 'SUSPECTED_COMPONENT_BUG' | 'GAVE_UP';
   reasoning: string;
   rejectedRepairs: number;
+  alignedToBehavior: boolean;
 }
 
 /** Pergunta ao desenvolvedor (UI da extensão, terminal ou arquivo de respostas). undefined = sem resposta. */

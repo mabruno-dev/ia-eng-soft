@@ -35,13 +35,14 @@ export function renderReport(record: RunRecord): string {
     '## Self-healing',
     '',
     `Iterações de reparo: **${record.iterations}** · reparos recusados pelo guardrail: **${record.rejectedRepairs}** · ` +
+      `expectativas alinhadas ao comportamento observado: **${record.alignedToBehavior ?? 0}** · ` +
       `taxa de modificação: **${(record.modificationRate * 100).toFixed(1)}%** (${record.generated.lines} → ${record.final.lines} linhas)`,
     '',
   ];
   if (record.history?.length) {
     lines.push('| # | Categoria da falha | Diagnóstico | Reparo | Recusas |', '|---|---|---|---|---|');
     for (const h of record.history) {
-      lines.push(`| ${h.iteration} | ${h.category ?? '—'} | ${cell(h.summary)} | **${h.repairStatus}**: ${cell(h.reasoning)} | ${h.rejectedRepairs} |`);
+      lines.push(`| ${h.iteration} | ${h.category ?? '—'} | ${cell(h.summary)} | **${h.repairStatus}**${h.alignedToBehavior ? ' (alinhado ao comportamento)' : ''}: ${cell(h.reasoning)} | ${h.rejectedRepairs} |`);
     }
   } else {
     lines.push(record.config.heal ? '_Nenhum reparo foi necessário._' : '_Self-healing desativado (baseline)._');

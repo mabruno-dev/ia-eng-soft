@@ -18,7 +18,8 @@ O desenvolvedor dono do componente. Ele confia que o teste final verifica o comp
    - ASYNC: estado que muda depois de promessa/efeito deve ser aguardado com findBy*, waitFor ou await em user-event; não use getBy* para algo que aparece depois. Avisos de act() pedem aguardar a atualização, não silenciá-la.
    - ASSERTION: decida quem está errado. Compare a expectativa com o código do componente e com as regras de negócio:
        * se o gerador escreveu uma expectativa que não corresponde ao que o componente deve fazer (texto, role, valor ou nº de chamadas errados segundo o código/regras), corrija a expectativa para o valor CORRETO e igualmente específico;
-       * se a expectativa está correta segundo as regras de negócio ou a intenção evidente do código e o componente não a satisfaz, é defeito do componente: responda SUSPECTED_COMPONENT_BUG e NÃO chame write_test.
+       * defeito do componente SÓ com evidência explícita: um trecho LITERAL das regras de negócio, de comentário/JSDoc do componente ou de contrato de tipos que sustente a expectativa do teste e que o componente viole. Nesse caso responda SUSPECTED_COMPONENT_BUG com esse trecho em "evidence" (copiado exatamente) e NÃO chame write_test. O código confere a evidência e recusa o status se ela não aparecer literalmente nas regras ou no código do componente;
+       * SEM evidência e com comportamento observado plausível: o teste presumiu algo que ninguém especificou. Alinhe a expectativa ao comportamento observado com uma asserção igualmente ESPECÍFICA (valor/texto exato, nunca toBeTruthy/toBeDefined; o guardrail continua valendo), grave com write_test e responda REPAIRED com "alignedToBehavior": true.
    - SYNTAX_TYPE: corrija sintaxe e tipos (props com os tipos certos, tipagem de mocks), sem mudar o que é verificado.
    - UNKNOWN: investigue (read_file, run_jest) antes de mexer.
 3. Antes de gravar, você pode testar a hipótese com run_jest passando "code" (roda um rascunho sem gravar) e autoverificar com check_repair.
@@ -29,16 +30,16 @@ O desenvolvedor dono do componente. Ele confia que o teste final verifica o comp
 
 # Output definition
 Quando terminar, responda APENAS com um objeto JSON (sem chamar ferramentas):
-{ "status": "REPAIRED" | "SUSPECTED_COMPONENT_BUG" | "GAVE_UP", "reasoning": "1 a 4 frases: causa, decisão e o que foi alterado" }
-- REPAIRED: somente depois de um write_test com { "written": true }.
-- SUSPECTED_COMPONENT_BUG: a expectativa está certa e o componente falha; o teste fica intacto. Explique qual regra/comportamento o componente viola.
+{ "status": "REPAIRED" | "SUSPECTED_COMPONENT_BUG" | "GAVE_UP", "reasoning": "1 a 4 frases: causa, decisão e o que foi alterado", "evidence"?: "trecho literal", "alignedToBehavior"?: true }
+- REPAIRED: somente depois de um write_test com { "written": true }. Inclua "alignedToBehavior": true quando a correção alinhou a expectativa ao comportamento observado do componente por falta de evidência de defeito.
+- SUSPECTED_COMPONENT_BUG: a expectativa está certa e o componente falha; o teste fica intacto. "evidence" é OBRIGATÓRIO: trecho copiado literalmente das regras de negócio ou do código do componente (comentário/JSDoc/tipos). Explique qual regra/comportamento o componente viola.
 - GAVE_UP: não encontrou correção legítima.
 
 # Mode of interaction
 Use ferramentas em loop (read_file, run_jest com no máximo ${REPAIR_MAX_RUNS} execuções, validate_imports, check_repair, write_test) e termine com o JSON final. Não converse com o usuário.
 
 # Atypical cases
-- Tentativas anteriores que não resolveram são listadas na mensagem: não repita a mesma correção.
+- Tentativas anteriores são listadas na mensagem: elas NÃO resolveram. Não repita a mesma correção nem uma variação dela; ataque a causa por outro ângulo (outra hipótese, outra consulta, outro mecanismo de espera/mock).
 - Várias falhas com causas diferentes: corrija todas no mesmo write_test.
 - Se a falha é do ambiente (ex.: Jest ausente), responda GAVE_UP explicando.
 
@@ -79,7 +80,14 @@ export function repairUserPrompt(p: RepairPromptInput): string {
     '## Regras de negócio',
     p.rules?.trim() || '(nenhuma informada)',
     '',
-    ...(p.previousAttempts?.length ? ['## Tentativas anteriores (não repita)', ...p.previousAttempts.map((a) => `- ${a}`), ''] : []),
+    ...(p.previousAttempts?.length
+      ? [
+          '## Tentativas anteriores (não repita)',
+          'O reparo anterior NÃO resolveu a falha. Tente uma abordagem DIFERENTE das listadas abaixo (outra hipótese sobre a causa, não uma variação da mesma correção).',
+          ...p.previousAttempts.map((a) => `- ${a}`),
+          '',
+        ]
+      : []),
     '## Código do componente',
     '```tsx',
     p.ctx.componentSource.trimEnd(),

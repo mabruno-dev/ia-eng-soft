@@ -27,7 +27,7 @@ Componente → 01 Contexto → 02 Elicitação → 03 Gerador → 04 Executor �
 2. **O LLM decide, as ferramentas executam, o código garante.** Todo agente roda via `runAgent()` (`src/core/agent/runtime.ts`): loop de tool calling com `maxSteps` (padrão 8), resposta final validada por zod. Ferramentas são funções determinísticas em `src/core/tools/`.
 3. **O LLM nunca escreve caminho de import que nenhuma ferramenta tenha devolvido.** Os caminhos vêm de `resolve_import` / `relative_specifier` e são re-verificados em código por `validateImports()` (arquivo existente, dependência do package.json, builtin do Node ou item de `allowedImports`).
 4. **Números vêm das ferramentas, nunca do texto do LLM.** `ExecResult`, cobertura e mutation score são lidos do resultado das ferramentas e mesclados em código; o LLM só acrescenta diagnóstico, categoria e recomendações.
-5. **Guardrail do oráculo (em código, não só no prompt):** o Reparador não pode "curar" um teste apagando asserções ou usando `skip`. `checkRepair(antes, depois)` rejeita o patch se: o nº de `expect(` diminuir; o nº de casos de teste (`it`/`test`) diminuir; aparecer `.skip`, `xit`, `xdescribe`, `test.todo` ou `.only`; ou uma asserção específica for trocada por uma trivial. A ferramenta `write_test` só grava o arquivo se `checkRepair` passar — isso é imposto na ferramenta, o LLM não consegue contornar. Se a falha parecer **defeito real do componente**, o agente para com status `SUSPECTED_COMPONENT_BUG`, **não altera o teste** e sinaliza ao dev.
+5. **Guardrail do oráculo (em código, não só no prompt):** o Reparador não pode "curar" um teste apagando asserções ou usando `skip`. `checkRepair(antes, depois)` rejeita o patch se: o nº de `expect(` diminuir; o nº de casos de teste (`it`/`test`) diminuir; aparecer `.skip`, `xit`, `xdescribe`, `test.todo` ou `.only`; ou uma asserção específica for trocada por uma trivial. A ferramenta `write_test` só grava o arquivo se `checkRepair` passar — isso é imposto na ferramenta, o LLM não consegue contornar. Se a falha parecer **defeito real do componente**, o agente para com status `SUSPECTED_COMPONENT_BUG`, **não altera o teste** e sinaliza ao dev — mas só com `evidence`: trecho literal das regras ou do código do componente, conferido em código. Sem evidência, alinha a expectativa ao comportamento observado (asserção específica, guardrail vale) e registra `alignedToBehavior`. O healLoop para quando a mesma assinatura de erro aparece 3 vezes seguidas; cada reparo recebe `previousAttempts`.
 6. **Toda chamada de LLM passa por `MeteredLLM`**, que registra tokens, nº de chamadas e tempo por agente (RQ5). `runAgent` também registra passos e chamadas de ferramenta por agente e grava o trace em `.reactest/runs/<runId>.trace.jsonl`.
 7. **Toda execução grava `.reactest/runs/<runId>.json`** no formato `RunRecord` (abaixo). A avaliação lê só esses arquivos.
 8. **Tudo que é interativo tem modo não-interativo** (arquivo de respostas / flags), senão não dá para avaliar em lote.
@@ -159,12 +159,13 @@ export interface RunRecord {
   mutation?: { score: number; killed: number; survived: number; timeout: number }; // RQ3
   smells?: string[];
   rejectedRepairs: number;                // RQ1: reparos indevidos barrados pelo guardrail
+  alignedToBehavior: number;              // RQ1: reparos que alinharam a expectativa ao comportamento observado
   llm: { calls: number; inputTokens: number; outputTokens: number }; // RQ5
   agents: Record<string, { steps: number; toolCalls: number }>;      // RQ5
   timings: { totalMs: number; perAgentMs: Record<string, number> };  // RQ5
   elicitation?: { questions: number; answered: number; derivedCases: number }; // RQ4
   testFilePath?: string;                  // auxiliares (opcionais)
-  history?: RunIteration[];               // { iteration, category, summary, repairStatus, reasoning, rejectedRepairs }
+  history?: RunIteration[];               // { iteration, category, summary, repairStatus, reasoning, rejectedRepairs, alignedToBehavior }
   error?: string;                         // quando status = 'ERROR'
 }
 ```

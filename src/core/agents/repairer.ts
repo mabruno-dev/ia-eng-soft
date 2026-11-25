@@ -40,6 +40,10 @@ export interface RepairTestResult {
   rejectedRepairs: number;
   /** Conteúdo do arquivo de teste ao final da sessão. */
   code: string;
+  /** REPAIRED alinhando a expectativa ao comportamento observado do componente (sem evidência de defeito). */
+  alignedToBehavior: boolean;
+  /** Trecho literal (regras/componente) que sustenta SUSPECTED_COMPONENT_BUG. */
+  evidence?: string;
 }
 
 export const REPAIR_MAX_STEPS = 10;
@@ -47,7 +51,31 @@ export const REPAIR_MAX_STEPS = 10;
 const finalBase = z.object({
   status: z.enum(['REPAIRED', 'SUSPECTED_COMPONENT_BUG', 'GAVE_UP']),
   reasoning: z.string().min(1),
+  evidence: z.string().optional(),
+  alignedToBehavior: z.boolean().optional(),
 });
+
+/** Espaços em branco (inclusive quebras de linha) colapsados: a evidência continua literal, só não depende de indentação. */
+const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * SUSPECTED_COMPONENT_BUG só com evidência explícita: `evidence` não vazio e presente literalmente
+ * nas regras de negócio ou no código-fonte do componente. Devolve a mensagem de erro, ou null se ok.
+ */
+export function checkEvidence(evidence: string | undefined, sources: { rules?: string; componentSource: string }): string | null {
+  const ev = squash(evidence ?? '');
+  const hint =
+    'Sem evidência, não é defeito do componente: se o comportamento observado for plausível, alinhe a expectativa a ele com uma asserção ESPECÍFICA ' +
+    '(write_test; o guardrail continua valendo) e responda REPAIRED com "alignedToBehavior": true.';
+  if (!ev) {
+    return `SUSPECTED_COMPONENT_BUG exige "evidence": trecho LITERAL das regras de negócio, de comentário/JSDoc do componente ou de contrato de tipos que sustente a expectativa do teste. ${hint}`;
+  }
+  const found = [sources.rules ?? '', sources.componentSource].some((src) => squash(src).includes(ev));
+  if (!found) {
+    return `"evidence" não aparece literalmente nas regras de negócio nem no código do componente: copie o trecho exato (sem parafrasear). ${hint}`;
+  }
+  return null;
+}
 
 /** Agente 05 — Reparador: decide a correção, testa hipóteses e grava via write_test (guardrail na ferramenta). */
 export async function repairTest(opts: RepairTestOptions): Promise<RepairTestResult> {
@@ -63,14 +91,27 @@ export async function repairTest(opts: RepairTestOptions): Promise<RepairTestRes
         message: 'status REPAIRED exige um write_test aceito ({ "written": true }); grave a correção ou use GAVE_UP / SUSPECTED_COMPONENT_BUG',
       });
     }
+    if (out.status === 'SUSPECTED_COMPONENT_BUG') {
+      const err = checkEvidence(out.evidence, { ...(opts.rules ? { rules: opts.rules } : {}), componentSource: ctx.componentSource });
+      if (err) issue.addIssue({ code: 'custom', path: ['evidence'], message: err });
+    }
+    if (out.alignedToBehavior && out.status !== 'REPAIRED') {
+      issue.addIssue({
+        code: 'custom',
+        path: ['alignedToBehavior'],
+        message: '"alignedToBehavior": true só vale com status REPAIRED (a expectativa foi alinhada e gravada com write_test)',
+      });
+    }
   });
 
-  const result = (status: RepairStatus, reasoning: string): RepairTestResult => ({
+  const result = (status: RepairStatus, reasoning: string, extra: { alignedToBehavior?: boolean; evidence?: string } = {}): RepairTestResult => ({
     status,
     reasoning,
     wrote: state.current !== state.original,
     rejectedRepairs: state.rejectedRepairs,
     code: state.current,
+    alignedToBehavior: status === 'REPAIRED' && extra.alignedToBehavior === true,
+    ...(extra.evidence ? { evidence: extra.evidence } : {}),
   });
 
   let output: z.infer<typeof finalBase>;
@@ -120,7 +161,12 @@ export async function repairTest(opts: RepairTestOptions): Promise<RepairTestRes
       llmMs: 0,
       ms: 0,
     });
-    return result('SUSPECTED_COMPONENT_BUG', `${output.reasoning} (alterações feitas antes da conclusão foram desfeitas)`);
+    return result('SUSPECTED_COMPONENT_BUG', `${output.reasoning} (alterações feitas antes da conclusão foram desfeitas)`, {
+      ...(output.evidence ? { evidence: output.evidence } : {}),
+    });
   }
-  return result(output.status, output.reasoning);
+  return result(output.status, output.reasoning, {
+    ...(output.alignedToBehavior !== undefined ? { alignedToBehavior: output.alignedToBehavior } : {}),
+    ...(output.status === 'SUSPECTED_COMPONENT_BUG' && output.evidence ? { evidence: output.evidence } : {}),
+  });
 }

@@ -53,7 +53,7 @@ describe('repairTest (agente 05)', () => {
 
     const r = await repairTest(base(fake, { runJest }));
 
-    expect(r).toEqual({ status: 'REPAIRED', reasoning: 'Troquei getByRole por await findByRole.', wrote: true, rejectedRepairs: 0, code: GOOD });
+    expect(r).toEqual({ status: 'REPAIRED', reasoning: 'Troquei getByRole por await findByRole.', wrote: true, rejectedRepairs: 0, code: GOOD, alignedToBehavior: false });
     expect(onDisk()).toBe(GOOD);
     // o rascunho roda num arquivo temporário ao lado do teste e é apagado; o teste real não muda no dry-run
     expect(runs[0]!.args).toEqual({ testFile: 'src/components/LoginForm.reactest-draft.test.tsx', componentFile: 'src/components/LoginForm.tsx' });
@@ -70,7 +70,7 @@ describe('repairTest (agente 05)', () => {
     await repairTest(base(fake, { rules: '- R1: e-mail válido', previousAttempts: ['iteração 1 [IMPORT] x → REPAIRED: y'] }));
     const req = fake.requestsFor(REPAIRER_AGENT)[0]!;
     expect(req.system).toBe(REPAIR_SYSTEM_PROMPT);
-    for (const s of ['É PROIBIDO apagar', 'IMPORT: use APENAS os especificadores de allowedImports', 'MOCK: mocke exatamente os módulos de mockTargets', 'ASYNC:', 'SUSPECTED_COMPONENT_BUG e NÃO chame write_test']) {
+    for (const s of ['É PROIBIDO apagar', 'IMPORT: use APENAS os especificadores de allowedImports', 'MOCK: mocke exatamente os módulos de mockTargets', 'ASYNC:', 'e NÃO chame write_test', 'SUSPECTED_COMPONENT_BUG']) {
       expect(req.system).toContain(s);
     }
     const prompt = req.messages[0]!.content;
@@ -79,8 +79,68 @@ describe('repairTest (agente 05)', () => {
     expect(prompt).toContain("mockTargets (use em jest.mock exatamente assim): '../services/authApi'");
     expect(prompt).toContain('R1: e-mail válido');
     expect(prompt).toContain('## Tentativas anteriores (não repita)');
+    expect(prompt).toContain('O reparo anterior NÃO resolveu a falha. Tente uma abordagem DIFERENTE');
+    expect(prompt).toContain('- iteração 1 [IMPORT] x → REPAIRED: y');
     expect(prompt).toContain(BAD_ASYNC.trimEnd());
     expect(prompt).toContain('export function LoginForm');
+  });
+
+  it('(a) SUSPECTED_COMPONENT_BUG sem evidência é rejeitado e devolvido ao agente', async () => {
+    const fake = new FakeLLM({
+      [REPAIRER_AGENT]: [
+        final('SUSPECTED_COMPONENT_BUG', 'O componente deveria mostrar o nome.'),
+        final('SUSPECTED_COMPONENT_BUG', 'A regra R3 exige o nome.', { evidence: 'R3: após o login, mostrar   "Bem-vindo, <nome>!"' }),
+      ],
+    });
+    const r = await repairTest(base(fake, { exec: execs.assertionFail(), rules: '- R3: após o login, mostrar "Bem-vindo, <nome>!"' }));
+    const feedback = fake.requestsFor(REPAIRER_AGENT)[1]!.messages.at(-1)!.content;
+    expect(feedback).toMatch(/SUSPECTED_COMPONENT_BUG exige "evidence"/);
+    expect(feedback).toMatch(/alignedToBehavior/);
+    // espaços colapsados, mas o texto tem de ser literal
+    expect(r).toMatchObject({ status: 'SUSPECTED_COMPONENT_BUG', evidence: 'R3: após o login, mostrar   "Bem-vindo, <nome>!"', alignedToBehavior: false });
+    expect(onDisk()).toBe(BAD_ASYNC);
+  });
+
+  it('(a) evidência parafraseada (não literal) é rejeitada', async () => {
+    const fake = new FakeLLM({
+      [REPAIRER_AGENT]: [
+        final('SUSPECTED_COMPONENT_BUG', 'x', { evidence: 'o componente deve exibir o nome completo' }),
+        call('write_test', { code: GOOD }),
+        final('REPAIRED', 'Alinhei ao comportamento observado.', { alignedToBehavior: true }),
+      ],
+    });
+    const r = await repairTest(base(fake, { rules: '- R3: após o login, mostrar "Bem-vindo, <nome>!"' }));
+    expect(fake.requestsFor(REPAIRER_AGENT)[1]!.messages.at(-1)!.content).toMatch(/"evidence" não aparece literalmente/);
+    expect(r).toMatchObject({ status: 'REPAIRED', alignedToBehavior: true });
+  });
+
+  it('(a) evidência pode vir do código do componente; insistir sem evidência vira GAVE_UP', async () => {
+    const ok = new FakeLLM({ [REPAIRER_AGENT]: [final('SUSPECTED_COMPONENT_BUG', 'x', { evidence: '<p role="status">Bem-vindo, {userName}!</p>' })] });
+    expect((await repairTest(base(ok))).status).toBe('SUSPECTED_COMPONENT_BUG');
+
+    const stubborn = new FakeLLM({ [REPAIRER_AGENT]: () => final('SUSPECTED_COMPONENT_BUG', 'confie em mim', { evidence: '   ' }) });
+    const r = await repairTest(base(stubborn));
+    expect(r.status).toBe('GAVE_UP');
+    expect(onDisk()).toBe(BAD_ASYNC);
+  });
+
+  it('(b) REPAIRED com alignedToBehavior é registrado; alignedToBehavior sem REPAIRED é recusado', async () => {
+    const fake = new FakeLLM({
+      [REPAIRER_AGENT]: [
+        final('GAVE_UP', 'nada', { alignedToBehavior: true }),
+        call('write_test', { code: GOOD }),
+        final('REPAIRED', 'Sem regra sobre o texto; alinhei ao texto exato renderizado.', { alignedToBehavior: true }),
+      ],
+    });
+    const r = await repairTest(base(fake));
+    expect(fake.requestsFor(REPAIRER_AGENT)[1]!.messages.at(-1)!.content).toMatch(/"alignedToBehavior": true só vale com status REPAIRED/);
+    expect(r).toMatchObject({ status: 'REPAIRED', alignedToBehavior: true, wrote: true });
+  });
+
+  it('o prompt exige evidência para SUSPECTED_COMPONENT_BUG e orienta o alinhamento ao comportamento', () => {
+    expect(REPAIR_SYSTEM_PROMPT).toContain('"evidence" é OBRIGATÓRIO');
+    expect(REPAIR_SYSTEM_PROMPT).toContain('"alignedToBehavior": true');
+    expect(REPAIR_SYSTEM_PROMPT).toContain('igualmente ESPECÍFICA');
   });
 
   it('REPAIRED sem write_test aceito é devolvido ao LLM', async () => {

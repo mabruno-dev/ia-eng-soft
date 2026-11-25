@@ -24,7 +24,7 @@ function printSummary(r: RunRecord, workspaceRoot: string): void {
   console.log('\n══════════════ Resumo ══════════════');
   console.log(`Status:      ${r.status}${r.error ? ` — ${r.error}` : ''}`);
   if (r.status === 'SUSPECTED_COMPONENT_BUG') console.log('             ⚠ o componente pode ter defeito; o teste NÃO foi alterado.');
-  console.log(`Iterações:   ${r.iterations} (reparos recusados pelo guardrail: ${r.rejectedRepairs}; modificação: ${(r.modificationRate * 100).toFixed(1)}%)`);
+  console.log(`Iterações:   ${r.iterations} (reparos recusados pelo guardrail: ${r.rejectedRepairs}; alinhados ao comportamento: ${r.alignedToBehavior ?? 0}; modificação: ${(r.modificationRate * 100).toFixed(1)}%)`);
   console.log(`Cobertura:   statements ${c.statements}% · branches ${c.branches}% · functions ${c.functions}% · lines ${c.lines}%`);
   console.log(`LLM:         ${r.llm.calls} chamadas · ${r.llm.inputTokens} tokens de entrada · ${r.llm.outputTokens} de saída`);
   console.log('Agentes:');

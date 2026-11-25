@@ -32,9 +32,11 @@ const onDisk = () => readFileSync(join(ws.root, TEST_FILE), 'utf8');
 const toolResults = (msgs: ChatMessage[]) =>
   msgs.filter((m): m is Extract<ChatMessage, { role: 'tool' }> => m.role === 'tool').map((m) => JSON.parse(m.content) as Record<string, unknown>);
 const lines = (s: string) => s.trimEnd().split('\n').length;
+const currentTest = (prompt: string) => /## Teste atual\n```tsx\n([\s\S]*)\n```$/.exec(prompt)![1]! + '\n';
 
 describe('healLoop', () => {
   it('(a) falha de import corrigida em 1 iteração', async () => {
+    // (sem alinhamento ao comportamento: alignedToBehavior = 0)
     const ex = scriptedExecutor(ws.root, (code) => (code.includes('./LoginFrom') ? execs.importFail() : execs.pass()));
     const fake = new FakeLLM({
       [REPAIRER_AGENT]: [
@@ -47,7 +49,7 @@ describe('healLoop', () => {
 
     const r = await healLoop({ ctx: loginCtx(ws.root), workspaceRoot: ws.root, generatedCode: BAD_IMPORT, llm: fake, maxIterations: 3, execute: ex.execute, meter });
 
-    expect(r).toMatchObject({ status: 'PASSED', stopReason: 'PASSED', iterations: 1, rejectedRepairs: 0, finalCode: GOOD });
+    expect(r).toMatchObject({ status: 'PASSED', stopReason: 'PASSED', iterations: 1, rejectedRepairs: 0, alignedToBehavior: 0, finalCode: GOOD });
     expect(onDisk()).toBe(GOOD);
     expect(ex.calls()).toBe(2);
     expect(r.history).toEqual([
@@ -90,7 +92,9 @@ describe('healLoop', () => {
     const fake = new FakeLLM({
       [REPAIRER_AGENT]: [
         call('read_file', { path: 'src/services/authApi.ts' }),
-        final('SUSPECTED_COMPONENT_BUG', 'A regra R3 e o código exigem "Bem-vindo, <nome>!", mas o componente renderiza o nome vazio; a expectativa está correta.'),
+        final('SUSPECTED_COMPONENT_BUG', 'A regra R3 e o código exigem "Bem-vindo, <nome>!", mas o componente renderiza o nome vazio; a expectativa está correta.', {
+          evidence: 'após o login, mostrar "Bem-vindo, <nome>!"',
+        }),
       ],
     });
 
@@ -105,7 +109,10 @@ describe('healLoop', () => {
   it('(c) SUSPECTED_COMPONENT_BUG depois de um write_test: o código restaura o teste original', async () => {
     const ex = scriptedExecutor(ws.root, () => execs.assertionFail());
     const fake = new FakeLLM({
-      [REPAIRER_AGENT]: [call('write_test', { code: withExtraAssertion(GOOD, 1) }), final('SUSPECTED_COMPONENT_BUG', 'O componente não mostra o nome.')],
+      [REPAIRER_AGENT]: [
+        call('write_test', { code: withExtraAssertion(GOOD, 1) }),
+        final('SUSPECTED_COMPONENT_BUG', 'O componente não mostra o nome.', { evidence: '<p role="status">Bem-vindo, {userName}!</p>' }),
+      ],
     });
     const r = await healLoop({ ctx: loginCtx(ws.root), workspaceRoot: ws.root, generatedCode: GOOD, llm: fake, maxIterations: 3, execute: ex.execute });
     expect(r.status).toBe('SUSPECTED_COMPONENT_BUG');
@@ -137,17 +144,52 @@ describe('healLoop', () => {
     expect(fake.requestsFor(REPAIRER_AGENT).at(-2)!.messages[0]!.content).toMatch(/## Tentativas anteriores[\s\S]*iteração 1 \[ASSERTION\] Error: expect\(received\)\.toHaveLength\(1\) → REPAIRED/);
   });
 
-  it('(e) para cedo quando a mesma assinatura de erro se repete', async () => {
+  it('(e) só para na TERCEIRA ocorrência consecutiva da mesma assinatura de erro', async () => {
     const ex = scriptedExecutor(ws.root, () => execs.asyncFail());
+    let k = 0;
     const fake = new FakeLLM({
-      [REPAIRER_AGENT]: [call('write_test', { code: withExtraAssertion(GOOD.replace("expect(await screen.findByRole('status'))", "expect(screen.getByRole('status'))"), 1) }), final('REPAIRED', 'Tentei.')],
+      [REPAIRER_AGENT]: (req) => {
+        if (req.messages.some((m) => m.role === 'tool')) return final('REPAIRED', `Tentativa ${k}: acrescentei uma asserção.`);
+        return call('write_test', { code: withExtraAssertion(currentTest(req.messages[0]!.content), ++k) });
+      },
     });
 
     const r = await healLoop({ ctx: loginCtx(ws.root), workspaceRoot: ws.root, generatedCode: BAD_ASYNC, llm: fake, maxIterations: 5, execute: ex.execute });
 
-    expect(r).toMatchObject({ status: 'FAILED', stopReason: 'REPEATED_ERROR', iterations: 1 });
-    expect(ex.calls()).toBe(2);
-    expect(fake.requestsFor(REPAIRER_AGENT)).toHaveLength(2);
+    // execução 0 (1ª ocorrência) → reparo 1 → execução 1 (2ª: continua) → reparo 2 → execução 2 (3ª: para)
+    expect(r).toMatchObject({ status: 'FAILED', stopReason: 'REPEATED_ERROR', iterations: 2 });
+    expect(ex.calls()).toBe(3);
+    const prompts = fake.requestsFor(REPAIRER_AGENT).map((q) => q.messages[0]!.content);
+    const second = [...new Set(prompts)][1]!;
+    // o 2º reparo recebe o que o 1º tentou, que ele não resolveu, e a instrução de mudar de abordagem
+    expect(second).toContain('O reparo anterior NÃO resolveu a falha. Tente uma abordagem DIFERENTE');
+    expect(second).toMatch(/- iteração 1 \[ASYNC\] .* → REPAIRED: Tentativa 1: acrescentei uma asserção\. ⇒ a MESMA falha persistiu\./);
+  });
+
+  it('(e) assinaturas alternadas não contam como repetição consecutiva', async () => {
+    const ex = scriptedExecutor(ws.root, (_c, n) => (n % 2 === 0 ? execs.asyncFail() : execs.assertionFail()));
+    let k = 0;
+    const fake = new FakeLLM({
+      [REPAIRER_AGENT]: (req) => {
+        if (req.messages.some((m) => m.role === 'tool')) return final('REPAIRED', 'ok');
+        return call('write_test', { code: withExtraAssertion(currentTest(req.messages[0]!.content), ++k) });
+      },
+    });
+    const r = await healLoop({ ctx: loginCtx(ws.root), workspaceRoot: ws.root, generatedCode: BAD_ASYNC, llm: fake, maxIterations: 4, execute: ex.execute });
+    expect(r).toMatchObject({ stopReason: 'MAX_ITERATIONS', iterations: 4 });
+  });
+
+  it('(h) alinhamento ao comportamento observado é registrado no histórico e contado', async () => {
+    const ex = scriptedExecutor(ws.root, (code) => (code.includes('// extra 1') ? execs.pass() : execs.assertionFail()));
+    const fake = new FakeLLM({
+      [REPAIRER_AGENT]: [
+        call('write_test', { code: withExtraAssertion(GOOD, 1) }),
+        final('REPAIRED', 'Nenhuma regra especifica o texto; alinhei a expectativa ao texto exato que o componente renderiza.', { alignedToBehavior: true }),
+      ],
+    });
+    const r = await healLoop({ ctx: loginCtx(ws.root), workspaceRoot: ws.root, generatedCode: GOOD, llm: fake, maxIterations: 3, execute: ex.execute });
+    expect(r).toMatchObject({ status: 'PASSED', iterations: 1, alignedToBehavior: 1 });
+    expect(r.history[0]).toMatchObject({ repairStatus: 'REPAIRED', alignedToBehavior: true });
   });
 
   it('(g) write_test com import inválido é recusado; GAVE_UP sem gravar encerra o loop', async () => {
