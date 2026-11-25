@@ -1,0 +1,41 @@
+{
+  "name": "reactest-agent",
+  "displayName": "ReacTest-Agent",
+  "description": "Gera testes Jest + React Testing Library para componentes React/TypeScript com uma pipeline agêntica com self-healing.",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20",
+    "vscode": "^1.95.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "reactest.generate",
+        "title": "ReacTest: Gerar testes para o componente"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "npm run build:ext && npm run typecheck",
+    "build:ext": "esbuild src/extension/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "commander": "^15.1.0",
+    "openai": "^7.64.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/vscode": "~1.95.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}
