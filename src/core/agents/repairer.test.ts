@@ -53,7 +53,7 @@ describe('repairTest (agente 05)', () => {
 
     const r = await repairTest(base(fake, { runJest }));
 
-    expect(r).toEqual({ status: 'REPAIRED', reasoning: 'Troquei getByRole por await findByRole.', wrote: true, rejectedRepairs: 0, code: GOOD, alignedToBehavior: false });
+    expect(r).toEqual({ status: 'REPAIRED', note: 'Troquei getByRole por await findByRole.', wrote: true, rejectedRepairs: 0, code: GOOD, alignedToBehavior: false });
     expect(onDisk()).toBe(GOOD);
     // o rascunho roda num arquivo temporário ao lado do teste e é apagado; o teste real não muda no dry-run
     expect(runs[0]!.args).toEqual({ testFile: 'src/components/LoginForm.reactest-draft.test.tsx', componentFile: 'src/components/LoginForm.tsx' });
@@ -177,7 +177,7 @@ describe('repairTest (agente 05)', () => {
     const fake = new FakeLLM({ [REPAIRER_AGENT]: () => call('write_test', { code: ASYNC_FIX_DELETING_ASSERTION }) });
     const r = await repairTest(base(fake, { maxSteps: 3 }));
     expect(r).toMatchObject({ status: 'GAVE_UP', wrote: false, rejectedRepairs: 3 });
-    expect(r.reasoning).toMatch(/excedeu o limite de 3 passos/);
+    expect(r.note).toMatch(/excedeu o limite de 3 passos/);
     expect(onDisk()).toBe(BAD_ASYNC);
   });
 });

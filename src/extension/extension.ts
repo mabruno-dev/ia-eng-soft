@@ -8,7 +8,7 @@ import { componentName, renderReport } from '../core/report';
 import type { LLMClient, LLMRequest, PipelineConfig, RunRecord } from '../core/types';
 import { VSCodeAsker } from './vscodeAsker';
 import { listCopilotModels, runCopilotEvaluation } from './evaluation';
-import { CLAUDE_CLI_DEFAULT_MODEL, ClaudeCliClient } from '../llm/claudeCli';
+import { CLAUDE_CLI_DEFAULT_MODEL, CLAUDE_CLI_FALLBACK_MODEL, ClaudeCliClient } from '../llm/claudeCli';
 import { OpenAIClient } from '../llm/openai';
 import { VSCodeLmClient } from '../llm/vscodeLm';
 
@@ -77,11 +77,11 @@ function cancellable(inner: LLMClient, token: vscode.CancellationToken): LLMClie
   };
 }
 
-async function createLLM(context: vscode.ExtensionContext, provider: PipelineConfig['provider'], model: string, token: vscode.CancellationToken): Promise<LLMClient | undefined> {
+async function createLLM(context: vscode.ExtensionContext, provider: PipelineConfig['provider'], model: string, token: vscode.CancellationToken, fallbackModel = CLAUDE_CLI_FALLBACK_MODEL): Promise<LLMClient | undefined> {
   if (provider === 'claude-cli') {
     const abort = new AbortController();
     token.onCancellationRequested(() => abort.abort());
-    return new ClaudeCliClient({ model: model || CLAUDE_CLI_DEFAULT_MODEL, signal: abort.signal });
+    return new ClaudeCliClient({ model: model || CLAUDE_CLI_DEFAULT_MODEL, fallbackModel, signal: abort.signal, onLog: (line) => output.appendLine(`  ⚠ ${line}`) });
   }
   if (provider === 'vscode') {
     return new VSCodeLmClient({ ...(model ? { family: model } : {}), cancellationToken: token });
@@ -149,7 +149,7 @@ async function generate(context: vscode.ExtensionContext, uri?: vscode.Uri, over
     const record = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `ReacTest: ${componentPath}`, cancellable: true },
       async (progress, token) => {
-        const llm = await createLLM(context, provider, model, token);
+        const llm = await createLLM(context, provider, model, token, cfg.get<string>('fallbackModel', CLAUDE_CLI_FALLBACK_MODEL));
         if (!llm) return undefined;
         output.show(true);
         output.appendLine(`\n══════ ${new Date().toLocaleString('pt-BR')} · ${componentPath} · ${provider}${config.model ? `/${config.model}` : ''} ══════`);
@@ -202,7 +202,7 @@ async function finish(workspaceRoot: string, record: RunRecord): Promise<void> {
         detail:
           'O Reparador concluiu que a expectativa do teste está correta e que o componente não a satisfaz. ' +
           'O teste NÃO foi alterado — revise o componente.' +
-          (last ? `\n\n${last.reasoning}` : ''),
+          (last ? `\n\n${last.note}` : ''),
       },
       openReport,
       showLog,

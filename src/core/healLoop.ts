@@ -21,7 +21,7 @@ export interface HealIteration {
   numTests: number;
   numFailed: number;
   repairStatus: RepairStatus;
-  reasoning: string;
+  note: string;
   rejectedRepairs: number; // recusas do guardrail nesta iteração
   wrote: boolean;
   /** O Reparador alinhou a expectativa ao comportamento observado (sem evidência de defeito). */
@@ -213,14 +213,14 @@ export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
       numTests: exec.numTests,
       numFailed: exec.numFailed,
       repairStatus: r.status,
-      reasoning: r.reasoning,
+      note: r.note,
       rejectedRepairs: r.rejectedRepairs,
       wrote: r.wrote,
       alignedToBehavior: r.alignedToBehavior,
     });
     opts.onIteration?.(history.at(-1)!);
     previousAttempts.push(
-      `iteração ${iterations} [${diagnosis.category ?? '-'}] ${firstErrorLine(exec)} → ${r.status}${r.alignedToBehavior ? ' (alinhado ao comportamento)' : ''}: ${r.reasoning}`,
+      `iteração ${iterations} [${diagnosis.category ?? '-'}] ${firstErrorLine(exec)} → ${r.status}${r.alignedToBehavior ? ' (alinhado ao comportamento)' : ''}: ${r.note}`,
     );
 
     if (r.status === 'SUSPECTED_COMPONENT_BUG') {

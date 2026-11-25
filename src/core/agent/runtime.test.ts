@@ -188,6 +188,21 @@ describe('runAgent', () => {
       for (const l of lines) expect(typeof l.ts).toBe('string');
     });
 
+    it('registra o modelo que respondeu e as ocorrências brutas do provider em cada passo', async () => {
+      dir = await mkdtemp(join(tmpdir(), 'reactest-trace-'));
+      const trace = new TraceWriter(dir, 'run-model');
+      const replies = [
+        { text: '', toolCalls: [{ id: 'c1', name: 'add', arguments: { a: 1, b: 1 } }], inputTokens: 1, outputTokens: 1, model: 'sonnet' },
+        { text: '{"answer": 2}', inputTokens: 1, outputTokens: 1, model: 'opus', notices: ['recusa do filtro de segurança (modelo sonnet): safeguards flagged [reasoning_extraction]'] },
+      ];
+      await runAgent({ name: 'calc', system: 's', input: 'i', tools: [addTool], llm: { complete: async () => replies.shift()! }, finalSchema, trace });
+      await trace.flush();
+      const lines = (await readFile(trace.file, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as TraceEntry);
+      expect(lines.map((l) => l.model)).toEqual(['sonnet', 'opus']);
+      expect(lines[0]!.notices).toBeUndefined();
+      expect(lines[1]!.notices![0]).toContain('[reasoning_extraction]');
+    });
+
     it('trunca o resumo do resultado em 500 caracteres', async () => {
       dir = await mkdtemp(join(tmpdir(), 'reactest-trace-'));
       const trace = new TraceWriter(dir, 'run-2');

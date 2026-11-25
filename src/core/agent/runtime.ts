@@ -151,6 +151,7 @@ export async function runAgent<T>(opts: RunAgentOptions<T>): Promise<RunAgentRes
       });
       const llmMs = now() - stepStart;
       const text = res.text || undefined;
+      const meta = { ...(res.model ? { model: res.model } : {}), ...(res.notices?.length ? { notices: res.notices } : {}) };
 
       if (res.toolCalls?.length) {
         messages.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls });
@@ -169,16 +170,16 @@ export async function runAgent<T>(opts: RunAgentOptions<T>): Promise<RunAgentRes
             ms: now() - t0,
           });
         }
-        await trace?.write({ agent: name, step: steps, kind: 'tool_calls', text, tools: traced, llmMs, ms: now() - stepStart });
+        await trace?.write({ agent: name, step: steps, kind: 'tool_calls', text, tools: traced, ...meta, llmMs, ms: now() - stepStart });
         continue;
       }
 
       const v = await validateFinal(res.text, finalSchema);
       if (v.ok) {
-        await trace?.write({ agent: name, step: steps, kind: 'final', text, llmMs, ms: now() - stepStart });
+        await trace?.write({ agent: name, step: steps, kind: 'final', text, ...meta, llmMs, ms: now() - stepStart });
         return { output: v.value, steps, toolCalls };
       }
-      await trace?.write({ agent: name, step: steps, kind: 'invalid_final', text, error: v.error, llmMs, ms: now() - stepStart });
+      await trace?.write({ agent: name, step: steps, kind: 'invalid_final', text, error: v.error, ...meta, llmMs, ms: now() - stepStart });
       if (repairs >= maxRepairs) throw new AgentOutputError(name, v.error, res.text);
       repairs++;
       messages.push({ role: 'assistant', content: res.text });

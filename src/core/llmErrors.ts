@@ -15,7 +15,7 @@ const RULES: [InfraErrorKind, string, RegExp][] = [
   ['jest_discovery', 'o Jest não encontrou o arquivo de teste (No tests found) — confira o caminho do workspace/rootDir do Jest', /No tests found|Jest não encontrou o arquivo de teste/i],
   ['quota', 'sem créditos/cota no provedor (HTTP 429 insufficient_quota / quota)', /insufficient_quota|exceeded your current quota|billing details|out of credits|\bquota\b|usage limit reached|credit balance is too low/i],
   ['no_model', 'nenhum modelo de linguagem disponível', /Nenhum modelo de linguagem do Copilot|comando "claude" não encontrado|no (?:language )?models? (?:are )?available/i],
-  ['auth', 'acesso ao modelo recusado (HTTP 401 / sem permissão)', /(^|:\s*)401\s|incorrect api key|invalid api key|invalid_api_key|OPENAI_API_KEY não definida|NoPermissions|not logged in|please run \/login|invalid x-api-key/i],
+  ['auth', 'acesso ao modelo recusado (HTTP 401 / sem permissão)', /(^|:\s*)401\s|incorrect api key|invalid api key|invalid_api_key|OPENAI_API_KEY não definida|NoPermissions|not logged in|please run \/login|invalid x-api-key|não está logado ou a credencial/i],
   ['rate_limit', 'limite de requisições persistente (HTTP 429 / rate limit)', /(^|:\s*)429\s|rate.?limit|too many requests/i],
   ['network', 'erro de rede persistente', /connection error|request timed out|fetch failed|socket hang up|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i],
 ];

@@ -46,7 +46,6 @@ const scenarioSchema = z.object({
   fromRules: z.array(z.string()).default([]),
 });
 const planSchemaBase = z.object({
-  analysis: z.string().optional(),
   scenarios: z.array(scenarioSchema).min(1),
 });
 
@@ -143,7 +142,7 @@ export function normalizePlan(plan: TestPlan, ctx: ContextResult, ws: Workspace)
   return { plan: { scenarios }, warnings };
 }
 
-/** Agente 03 — Gerador: plano (CoT) e depois código, cada fase via runAgent. */
+/** Agente 03 — Gerador: plano de cenários e depois código, cada fase via runAgent. */
 export async function generateTest(opts: GenerateTestOptions): Promise<GenerateTestResult> {
   const { ctx, workspaceRoot, rules, llm } = opts;
   const ws = getWorkspace(workspaceRoot);

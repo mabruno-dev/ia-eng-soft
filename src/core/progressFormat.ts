@@ -88,7 +88,7 @@ export function formatEvent(e: PipelineEvent, opts: FormatOptions = {}): string[
       const h = e.iteration;
       return [
         `  ⟳ iteração ${h.iteration}: [${h.category ?? '—'}] ${oneLine(h.summary, 200)}`,
-        `    → ${h.repairStatus}${h.rejectedRepairs ? ` (${h.rejectedRepairs} reparo(s) recusado(s) pelo guardrail)` : ''}: ${oneLine(h.reasoning, 300)}`,
+        `    → ${h.repairStatus}${h.rejectedRepairs ? ` (${h.rejectedRepairs} reparo(s) recusado(s) pelo guardrail)` : ''}: ${oneLine(h.note, 300)}`,
       ];
     }
     case 'error':

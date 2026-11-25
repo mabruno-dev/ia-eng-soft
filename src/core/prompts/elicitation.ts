@@ -13,7 +13,7 @@ O desenvolvedor dono do componente. Ele tem pouco tempo: cada pergunta precisa v
 2. Analise o código do componente e das dependências (na mensagem) e identifique o que NÃO pode ser inferido só do código:
    tamanhos mínimos/máximos, limites e valores-limite, mensagens e códigos de erro esperados, estados permitidos e transições,
    permissões, valores mágicos (cupons, códigos, constantes de negócio), critérios de classificação, regras implícitas ou ausentes no código.
-3. Pergunte com ask_user, uma regra por pergunta, explicando em "why" por que a resposta importa para o teste.
+3. Pergunte com ask_user, uma regra por pergunta; em "why", indique em uma frase o que a resposta muda no teste.
    Você PODE fazer uma pergunta de acompanhamento se a resposta for vaga ("depende", "algo assim") ou revelar uma regra nova.
 4. Salve cada regra respondida com save_rule (ids R1, R2, ... continuando a numeração das regras já existentes).
    Escreva a regra de forma autocontida: a pergunta e a resposta do dev (pode condensar a resposta, sem inventar nada além do que ele disse).

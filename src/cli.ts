@@ -4,7 +4,7 @@ import { CliAsker, FileAsker, NoopAsker } from './core/askers';
 import { AGENT_LABELS, type PipelineEvent, runFiles, runPipeline } from './core/pipeline';
 import { formatEvent } from './core/progressFormat';
 import type { Asker, LLMClient, PipelineConfig, RunRecord } from './core/types';
-import { CLAUDE_CLI_DEFAULT_MODEL, ClaudeCliClient } from './llm/claudeCli';
+import { CLAUDE_CLI_DEFAULT_MODEL, CLAUDE_CLI_FALLBACK_MODEL, ClaudeCliClient } from './llm/claudeCli';
 import { OpenAIClient } from './llm/openai';
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o';
@@ -51,6 +51,7 @@ interface CliOptions {
   maxSteps: number;
   model: string;
   provider: PipelineConfig['provider'];
+  fallbackModel: string;
   answers?: string;
   maxQuestions: number;
 }
@@ -67,6 +68,7 @@ const program = new Command()
   .option('--max-steps <n>', 'máximo de passos (chamadas ao LLM) por agente', int('--max-steps', 1), 8)
   .option('--model <model>', `modelo do LLM (padrão: ${DEFAULT_MODEL}; com --provider claude-cli: ${CLAUDE_CLI_DEFAULT_MODEL})`, DEFAULT_MODEL)
   .addOption(new Option('--provider <provider>', 'provedor do LLM').choices(['openai', 'vscode', 'claude-cli']).default('openai'))
+  .option('--fallback-model <model>', 'claude-cli: modelo usado se o filtro de segurança recusar o modelo principal duas vezes ("" desativa)', CLAUDE_CLI_FALLBACK_MODEL)
   .option('--answers <arquivo.json>', 'respostas da elicitação (modo não interativo; casa por palavras-chave por componente)')
   .option('--max-questions <n>', 'máximo de perguntas da elicitação', int('--max-questions', 0), 5)
   .action(async (component: string, opts: CliOptions) => {
@@ -76,7 +78,8 @@ const program = new Command()
       throw new Error('O provider "vscode" (Copilot) só está disponível dentro da extensão do VS Code. Use --provider openai ou claude-cli no CLI.');
     }
     if (opts.provider === 'claude-cli' && program.getOptionValueSource('model') === 'default') opts.model = CLAUDE_CLI_DEFAULT_MODEL;
-    const llm: LLMClient = opts.provider === 'claude-cli' ? new ClaudeCliClient({ model: opts.model }) : new OpenAIClient({ model: opts.model });
+    const llm: LLMClient = opts.provider === 'claude-cli'
+        ? new ClaudeCliClient({ model: opts.model, fallbackModel: opts.fallbackModel, onLog: (line) => console.log(`  ⚠ ${line}`) }) : new OpenAIClient({ model: opts.model });
     let asker: Asker | undefined;
     if (opts.elicit) asker = opts.answers ? new FileAsker(opts.answers) : process.stdin.isTTY ? new CliAsker() : new NoopAsker();
 

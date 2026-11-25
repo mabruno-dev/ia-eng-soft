@@ -27,6 +27,10 @@ export interface TraceEntry {
   text?: string;
   tools?: TraceToolCall[];
   error?: string;
+  /** Modelo que respondeu nesta chamada, quando o provider informa (claude-cli). */
+  model?: string;
+  /** Texto bruto de ocorrências recuperadas no provider (ex.: recusa do filtro de segurança). */
+  notices?: string[];
   llmMs: number;
   ms: number; // duração total do passo (LLM + ferramentas)
 }

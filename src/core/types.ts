@@ -29,6 +29,10 @@ export interface LLMResponse {
   tokensEstimated?: boolean;
   /** Custo informado pelo provedor (ex.: total_cost_usd do Claude Code), quando houver. */
   costUsd?: number;
+  /** Modelo que efetivamente respondeu (ex.: fallback do claude-cli); vai para o trace. */
+  model?: string;
+  /** Ocorrências recuperadas no provider (texto bruto, ex.: recusa do filtro de segurança); vão para o trace. */
+  notices?: string[];
 }
 export interface LLMClient {
   complete(req: LLMRequest): Promise<LLMResponse>;
@@ -120,7 +124,7 @@ export interface RunIteration {
   category: FailureCategory | null;
   summary: string;
   repairStatus: 'REPAIRED' | 'SUSPECTED_COMPONENT_BUG' | 'GAVE_UP';
-  reasoning: string;
+  note: string;
   rejectedRepairs: number;
   alignedToBehavior: boolean;
 }

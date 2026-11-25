@@ -28,6 +28,8 @@ npm run eval -- [--only LoginForm] [--runs 1] [--resume [dir]]
   `reactest.provider = "claude-cli"` / o comando "ReacTest: Gerar testes (Claude CLI)" na extensão (componente do
   editor ativo, cura e elicitação ligadas). Usa o `claude` do PATH (build nativo; faça login uma vez) em modo headless
   (`-p --output-format json --no-session-persistence --tools ""`), numa pasta temporária vazia, uma chamada por vez,
-  timeout de 180 s. O tool calling é emulado: o prompt traz system, histórico e ferramentas, e o modelo responde só
+  timeout de 180 s. Se o filtro de segurança do Claude recusar ("safeguards … reasoning_extraction"), faz 1 nova
+  tentativa e depois usa o modelo de fallback (`--fallback-model` / `reactest.fallbackModel`, padrão `opus`); o modelo
+  de cada chamada e o texto bruto das recusas ficam no `.trace.jsonl`. O tool calling é emulado: o prompt traz system, histórico e ferramentas, e o modelo responde só
   em JSON (`{"toolCalls":[...]}` ou `{"text":...}`). Tokens e custo vêm do `usage` do CLI; sem ele, são marcados
   como estimados.

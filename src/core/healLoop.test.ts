@@ -118,7 +118,7 @@ describe('healLoop', () => {
     expect(r.status).toBe('SUSPECTED_COMPONENT_BUG');
     expect(onDisk()).toBe(GOOD);
     expect(r.history[0]!.wrote).toBe(false);
-    expect(r.history[0]!.reasoning).toMatch(/foram desfeitas/);
+    expect(r.history[0]!.note).toMatch(/foram desfeitas/);
   });
 
   it('(d) para em maxIterations', async () => {

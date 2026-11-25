@@ -32,7 +32,7 @@ function scriptedLLM(ctx: ContextResult): LLMClient {
       if (n === 0) return { toolCalls: [{ id: 'r1', name: 'write_test', arguments: { code: ASYNC_FIX_DELETING_ASSERTION } }] };
       if (n === 1) return { toolCalls: [{ id: 'r2', name: 'run_jest', arguments: { code: GOOD } }] };
       if (n === 2) return { toolCalls: [{ id: 'r3', name: 'write_test', arguments: { code: GOOD } }] };
-      return JSON.stringify({ status: 'REPAIRED', reasoning: '(roteirizado) O status só aparece após o login resolver: getByRole → await findByRole, mantendo todas as asserções.' });
+      return JSON.stringify({ status: 'REPAIRED', note: '(roteirizado) O status só aparece após o login resolver: getByRole → await findByRole, mantendo todas as asserções.' });
     },
   });
 }
@@ -72,7 +72,7 @@ const program = new Command()
     console.log('\n== Histórico ==');
     for (const h of r.history) {
       console.log(`#${h.iteration} [${h.category}] ${h.numFailed}/${h.numTests} falhas — ${h.summary}`);
-      console.log(`   reparo: ${h.repairStatus} (gravou: ${h.wrote}, recusas: ${h.rejectedRepairs}) — ${h.reasoning}`);
+      console.log(`   reparo: ${h.repairStatus} (gravou: ${h.wrote}, recusas: ${h.rejectedRepairs}) — ${h.note}`);
     }
     console.log('\n== Trace do Reparador ==', trace.file);
     for (const line of (await readFile(trace.file, 'utf8')).trim().split('\n')) {

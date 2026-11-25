@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { classifyInfraError } from '../core/llmErrors';
 import { MeteredLLM } from '../core/metrics';
 import type { LLMRequest, ToolSpec } from '../core/types';
-import { buildPrompt, ClaudeCliClient, extractJsonObject, parseModelReply, redactSecrets, resolveCommand } from './claudeCli';
+import { buildPrompt, ClaudeCliClient, ClaudeCliError, ClaudeSafeguardError, extractJsonObject, parseModelReply, redactSecrets, resolveCommand, SAFEGUARD_RETRY_LINE } from './claudeCli';
 
 /**
  * Fake: lê o roteiro (FAKE_CLAUDE_SCRIPT), consome uma resposta por chamada (contador em arquivo),
@@ -191,11 +191,13 @@ describe('ClaudeCliClient (executável falso no PATH)', () => {
   it('erro do CLI: nenhuma chave ou token aparece na mensagem; login/limite viram erro de infraestrutura', async () => {
     const key = 'sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
     const c = client([{ raw: '', exitCode: 1, stderr: `Error: invalid x-api-key ${key}\nANTHROPIC_API_KEY=${key}\nAuthorization: Bearer abcdefghijklmnop1234` }]);
-    const err = (await c.complete(req).catch((e: unknown) => e)) as Error;
-    expect(err.message).toMatch(/claude falhou \(código 1\)/);
-    expect(err.message).not.toContain(key);
-    expect(err.message).not.toContain('abcdefghijklmnop1234');
-    expect(err.message).toContain('[REDACTED]');
+    const err = (await c.complete(req).catch((e: unknown) => e)) as ClaudeCliError;
+    expect(err.message).toBe('o Claude Code não está logado ou a credencial foi recusada (rode "claude" no terminal e faça login)');
+    for (const text of [err.message, err.rawText!]) {
+      expect(text).not.toContain(key);
+      expect(text).not.toContain('abcdefghijklmnop1234');
+    }
+    expect(err.rawText).toContain('[REDACTED]');
     expect(classifyInfraError(err.message)?.kind).toBe('auth');
 
     rmSync(`${scriptFile}.n`, { force: true });
@@ -206,11 +208,103 @@ describe('ClaudeCliClient (executável falso no PATH)', () => {
     expect(classifyInfraError(login.message)?.kind).toBe('auth');
   });
 
+  it('erro genérico do CLI: mensagem curta em pt-BR sem request ID/links; texto bruto completo em rawText (trace)', async () => {
+    const raw = 'API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"},"request_id":"req_011CXyz"} see https://docs.anthropic.com/errors';
+    const err = (await client([{ result: raw, isError: true, exitCode: 1 }]).complete(req).catch((e: unknown) => e)) as ClaudeCliError;
+    expect(err.message).toMatch(/^o Claude Code falhou \(código 1\): API Error: 500/);
+    expect(err.message).not.toMatch(/req_011CXyz|https?:|request_id/);
+    expect(err.message.length).toBeLessThan(220);
+    expect(err.rawText).toBe(raw);
+  });
+
   it('claude ausente do PATH: erro em pt-BR classificado como infraestrutura', async () => {
     const c = new ClaudeCliClient({ command: 'claude-inexistente-xyz', env: { [pathKey]: binDir } });
     await expect(c.complete(req)).rejects.toThrow(/comando "claude-inexistente-xyz" não encontrado no PATH/);
     expect(classifyInfraError('ClaudeCliError: comando "claude" não encontrado no PATH.')?.kind).toBe('no_model');
     expect(resolveCommand('claude', { [pathKey]: binDir })).toMatchObject({ file: process.execPath, script: true });
+  });
+});
+
+describe('filtro de segurança do Claude (safeguards / reasoning_extraction)', () => {
+  const flagged: Step = {
+    result: 'API Error: 400 safeguards flagged this request [reasoning_extraction] (request_id: req_abc123) https://support.anthropic.com/x',
+    isError: true,
+    exitCode: 1,
+  };
+  const ok: Step = { result: '{"text":"pronto"}', usage };
+  const modelOf = (argv: string[]) => argv[argv.indexOf('--model') + 1];
+  const withLog = (steps: Step[], fallbackModel?: string) => {
+    const lines: string[] = [];
+    writeFileSync(scriptFile, JSON.stringify(steps));
+    const env = { ...process.env, [pathKey]: `${binDir}${delimiter}${process.env[pathKey] ?? ''}`, FAKE_CLAUDE_SCRIPT: scriptFile, FAKE_CLAUDE_LOG: logFile };
+    const c = new ClaudeCliClient({ env, onLog: (l) => lines.push(l), ...(fallbackModel !== undefined ? { fallbackModel } : {}) });
+    return { c, lines };
+  };
+
+  it('1ª recusa → nova tentativa com o mesmo modelo e a linha neutra; sucesso sem fallback', async () => {
+    const { c, lines } = withLog([flagged, ok]);
+    const r = await c.complete(req);
+    expect(r.text).toBe('pronto');
+    expect(r.model).toBe('sonnet');
+    const log = calls();
+    expect(log.map((l) => modelOf(l.argv))).toEqual(['sonnet', 'sonnet']);
+    expect(log[0]!.stdin.endsWith(SAFEGUARD_RETRY_LINE)).toBe(false);
+    expect(log[1]!.stdin).toBe(`${log[0]!.stdin}\n\n${SAFEGUARD_RETRY_LINE}`); // mesmo prompt + linha neutra
+    expect(r.notices).toHaveLength(1);
+    expect(r.notices![0]).toContain('[reasoning_extraction]'); // texto bruto vai para o trace
+    expect(lines).toEqual([
+      'claude-cli [context]: o filtro de segurança recusou (modelo sonnet); nova tentativa com o mesmo modelo.',
+      'claude-cli [context]: respondido pelo modelo sonnet.',
+    ]);
+  });
+
+  it('2ª recusa → fallback para o modelo configurado (padrão opus), registrado no log e na resposta', async () => {
+    const { c, lines } = withLog([flagged, flagged, ok]);
+    const r = await c.complete(req);
+    expect(r.model).toBe('opus');
+    expect(calls().map((l) => modelOf(l.argv))).toEqual(['sonnet', 'sonnet', 'opus']);
+    expect(calls()[2]!.stdin).toContain(SAFEGUARD_RETRY_LINE);
+    expect(lines).toContain('claude-cli [context]: o filtro de segurança recusou (modelo sonnet); fallback para o modelo opus.');
+    expect(lines.at(-1)).toBe('claude-cli [context]: respondido pelo modelo opus.');
+    expect(r.notices).toHaveLength(2);
+  });
+
+  it('fallback também recusado → ClaudeSafeguardError curto em pt-BR; bruto (com request ID) só em rawText', async () => {
+    const { c } = withLog([flagged, flagged, flagged], 'haiku');
+    const err = (await c.complete(req).catch((e: unknown) => e)) as ClaudeSafeguardError;
+    expect(err).toBeInstanceOf(ClaudeSafeguardError);
+    expect(err.message).toBe('o filtro de segurança do Claude recusou a requisição (modelos sonnet, haiku)');
+    expect(err.models).toEqual(['sonnet', 'haiku']);
+    expect(err.rawText).toContain('req_abc123');
+    expect(err.rawText).toContain('[haiku]');
+    expect(calls().map((l) => modelOf(l.argv))).toEqual(['sonnet', 'sonnet', 'haiku']);
+    expect(classifyInfraError(err.message)).toBeUndefined(); // não é infraestrutura: o run fica ERROR com a mensagem curta
+  });
+
+  it('fallbackModel vazio desativa o fallback (2 tentativas)', async () => {
+    const { c } = withLog([flagged, flagged, ok], '');
+    await expect(c.complete(req)).rejects.toBeInstanceOf(ClaudeSafeguardError);
+    expect(calls()).toHaveLength(2);
+  });
+
+  it('na pipeline, o RunRecord guarda a mensagem curta e o .trace.jsonl o texto bruto', async () => {
+    const { runPipeline } = await import('../core/pipeline');
+    const ws = join(dir, 'ws');
+    mkdirSync(join(ws, 'src'), { recursive: true });
+    writeFileSync(join(ws, 'package.json'), '{"name":"ws"}');
+    writeFileSync(join(ws, 'src', 'X.tsx'), 'export const X = () => null;\n');
+    const { c } = withLog([flagged], '');
+    const record = await runPipeline({
+      workspaceRoot: ws,
+      componentPath: 'src/X.tsx',
+      config: { heal: false, elicit: false, verify: false, maxIterations: 0, maxAgentSteps: 4, model: 'sonnet', provider: 'claude-cli' },
+      llm: c,
+    });
+    expect(record.status).toBe('ERROR');
+    expect(record.error).toBe('ClaudeSafeguardError: o filtro de segurança do Claude recusou a requisição (modelo sonnet)');
+    const trace = readFileSync(join(ws, '.reactest', 'runs', `${record.runId}.trace.jsonl`), 'utf8');
+    expect(trace).toContain('[reasoning_extraction]');
+    expect(trace).toContain('req_abc123');
   });
 });
 

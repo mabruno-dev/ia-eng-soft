@@ -89,6 +89,11 @@
           "default": "",
           "description": "Modelo. Copilot: família (ex.: gpt-4o, claude-sonnet-4); vazio = primeiro disponível. Claude CLI: alias ou nome (ex.: sonnet, opus); vazio = sonnet. OpenAI: nome do modelo; vazio = gpt-4o."
         },
+        "reactest.fallbackModel": {
+          "type": "string",
+          "default": "opus",
+          "description": "Claude CLI: modelo usado quando o filtro de segurança do Claude recusa o modelo principal duas vezes (vazio desativa o fallback)."
+        },
         "reactest.allowMiniModels": {
           "type": "boolean",
           "default": false,

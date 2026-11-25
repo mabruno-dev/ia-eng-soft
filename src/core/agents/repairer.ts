@@ -33,7 +33,7 @@ export interface RepairTestOptions {
 
 export interface RepairTestResult {
   status: RepairStatus;
-  reasoning: string;
+  note: string;
   /** Algum write_test foi aceito (o arquivo mudou). */
   wrote: boolean;
   /** Patches recusados pelo guardrail nesta sessão. */
@@ -52,7 +52,7 @@ export const REPAIR_MAX_OUTPUT_REPAIRS = 2;
 
 const finalBase = z.object({
   status: z.enum(['REPAIRED', 'SUSPECTED_COMPONENT_BUG', 'GAVE_UP']),
-  reasoning: z.string().min(1),
+  note: z.string().min(1),
   evidence: z.string().optional(),
   alignedToBehavior: z.boolean().optional(),
 });
@@ -106,9 +106,9 @@ export async function repairTest(opts: RepairTestOptions): Promise<RepairTestRes
     }
   });
 
-  const result = (status: RepairStatus, reasoning: string, extra: { alignedToBehavior?: boolean; evidence?: string } = {}): RepairTestResult => ({
+  const result = (status: RepairStatus, note: string, extra: { alignedToBehavior?: boolean; evidence?: string } = {}): RepairTestResult => ({
     status,
-    reasoning,
+    note,
     wrote: state.current !== state.original,
     rejectedRepairs: state.rejectedRepairs,
     code: state.current,
@@ -164,11 +164,11 @@ export async function repairTest(opts: RepairTestOptions): Promise<RepairTestRes
       llmMs: 0,
       ms: 0,
     });
-    return result('SUSPECTED_COMPONENT_BUG', `${output.reasoning} (alterações feitas antes da conclusão foram desfeitas)`, {
+    return result('SUSPECTED_COMPONENT_BUG', `${output.note} (alterações feitas antes da conclusão foram desfeitas)`, {
       ...(output.evidence ? { evidence: output.evidence } : {}),
     });
   }
-  return result(output.status, output.reasoning, {
+  return result(output.status, output.note, {
     ...(output.alignedToBehavior !== undefined ? { alignedToBehavior: output.alignedToBehavior } : {}),
     ...(output.status === 'SUSPECTED_COMPONENT_BUG' && output.evidence ? { evidence: output.evidence } : {}),
   });

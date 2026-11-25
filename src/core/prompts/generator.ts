@@ -4,7 +4,7 @@ import { renderFewShot } from './fewshot';
 const DEP_SOURCE_MAX = 3000;
 
 // ---------------------------------------------------------------------------
-// Fase 1 — Plano (AUTOMAT + Chain-of-Thought)
+// Fase 1 — Plano (AUTOMAT + checklist de cobertura)
 // ---------------------------------------------------------------------------
 
 export const GENERATOR_PLAN_SYSTEM_PROMPT = `# Act as
@@ -19,7 +19,6 @@ Planeje os cenários de teste do componente informado, usando o código do compo
 # Output definition
 Responda APENAS com um objeto JSON:
 {
-  "analysis": "seu raciocínio passo a passo (veja Mode of interaction)",
   "scenarios": [
     {
       "name": "frase curta em pt-BR que vai virar o título do it(...)",
@@ -31,15 +30,15 @@ Responda APENAS com um objeto JSON:
   ]
 }
 
-# Mode of interaction (Chain-of-Thought)
-Antes de listar os cenários, raciocine no campo "analysis", passo a passo:
+# Mode of interaction (checklist de cobertura)
+Os cenários devem cobrir, a partir do código e das regras:
 1. O que o componente renderiza e quais props/estados alteram a saída.
-2. Quais interações do usuário existem (cliques, digitação, envio).
-3. Quais validações existem e quais mensagens aparecem.
-4. Quais efeitos assíncronos existem (API, useEffect) e seus estados: loading, erro e sucesso.
-5. Quais dependências precisam de Provider ou de mock (use mockTargets).
-6. Quais regras de negócio se aplicam e quais casos de borda elas implicam (limites exatos, vazio, valores inválidos).
-Depois, derive os cenários desse raciocínio. Você pode chamar read_file se precisar ver um arquivo do workspace.
+2. As interações do usuário (cliques, digitação, envio).
+3. As validações e as mensagens exibidas.
+4. Os efeitos assíncronos (API, useEffect) e seus estados: loading, erro e sucesso.
+5. As dependências que precisam de Provider ou de mock (use mockTargets).
+6. As regras de negócio e os casos de borda que elas implicam (limites exatos, vazio, valores inválidos).
+Você pode chamar read_file se precisar ver um arquivo do workspace.
 
 O plano DEVE cobrir, quando aplicável ao componente:
 - renderização (estado inicial),
@@ -53,7 +52,7 @@ Casos de borda respeitam o contrato de tipos: nunca planeje "sem a prop X" para 
 # Atypical cases
 - Sem regras de negócio: "fromRules" é [] em todos os cenários. Nunca invente ids de regra.
 - Com regras de negócio: todo id em "fromRules" precisa existir nas regras informadas; cada regra deve originar pelo menos um cenário, de preferência com os valores-limite.
-- Se uma regra contradiz o código, planeje o cenário pela regra (o teste deve revelar o defeito) e diga isso na description.
+- Se uma regra contradiz o código, planeje o cenário pela regra (o teste deve revelar o defeito) e registre isso na description.
 - Componente sem interação ou sem API: não invente cenários desses tipos.
 
 # Topic whitelisting
@@ -138,7 +137,7 @@ export function planUserPrompt(ctx: ContextResult, rules?: string): string {
   const rulesBlock = rules?.trim()
     ? `Regras de negócio (use os ids em fromRules):\n${rules.trim()}`
     : 'Regras de negócio: nenhuma informada (fromRules deve ser []).';
-  return `${renderContext(ctx)}\n\n${rulesBlock}\n\nRaciocine passo a passo em "analysis" e responda o JSON do plano.`;
+  return `${renderContext(ctx)}\n\n${rulesBlock}\n\nResponda apenas com o JSON do plano.`;
 }
 
 export function codeUserPrompt(ctx: ContextResult, plan: TestPlan, rules?: string): string {

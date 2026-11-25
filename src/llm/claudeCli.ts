@@ -11,7 +11,12 @@ import { delimiter, extname, isAbsolute, join } from 'node:path';
 import type { LLMClient, LLMRequest, LLMResponse, ToolCall, ToolSpec } from '../core/types';
 
 export const CLAUDE_CLI_DEFAULT_MODEL = 'sonnet';
+/** Modelo usado quando o filtro de segurança recusa o modelo configurado duas vezes. */
+export const CLAUDE_CLI_FALLBACK_MODEL = 'opus';
 export const CLAUDE_CLI_TIMEOUT_MS = 180_000;
+/** Linha neutra acrescentada ao prompt na nova tentativa após uma recusa do filtro de segurança. */
+export const SAFEGUARD_RETRY_LINE = 'Responda apenas com o JSON pedido, sem comentários.';
+const SAFEGUARD_RE = /safeguards|reasoning_extraction/i;
 
 export interface ClaudeCliClientOptions {
   /** Modelo do Claude Code (alias como 'sonnet'/'opus' ou nome completo). Padrão: 'sonnet'. */
@@ -26,6 +31,10 @@ export interface ClaudeCliClientOptions {
   env?: NodeJS.ProcessEnv;
   /** Interrompe o processo em andamento (ex.: cancelamento na extensão). */
   signal?: AbortSignal;
+  /** Modelo de fallback após 2 recusas do filtro de segurança (padrão: 'opus'; '' desativa). */
+  fallbackModel?: string;
+  /** Avisos curtos em pt-BR (recusa do filtro, nova tentativa, fallback). Nunca recebe segredos. */
+  onLog?: (line: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,11 +57,42 @@ export function redactSecrets(s: string): string {
   return out;
 }
 
+/** Erro do provider: `message` curta em pt-BR (vai para a UI e o RunRecord); `rawText` bruto (só no trace). */
 export class ClaudeCliError extends Error {
-  constructor(message: string) {
+  readonly rawText?: string;
+  constructor(message: string, rawText?: string) {
     super(redactSecrets(message));
     this.name = 'ClaudeCliError';
+    if (rawText) this.rawText = redactSecrets(rawText);
   }
+}
+
+/** O filtro de segurança do Claude recusou a requisição ("safeguards flagged … [reasoning_extraction]"). */
+export class ClaudeSafeguardError extends ClaudeCliError {
+  readonly models: string[];
+  constructor(models: string[], rawText: string) {
+    super(`o filtro de segurança do Claude recusou a requisição (modelo${models.length > 1 ? 's' : ''} ${models.join(', ')})`, rawText);
+    this.name = 'ClaudeSafeguardError';
+    this.models = models;
+  }
+}
+
+/** Mensagem curta em pt-BR para uma falha do CLI (sem request ID nem links); o texto bruto vai em rawText. */
+export function cliErrorMessage(code: number | null, raw: string): string {
+  if (/not logged in|please run \/login|invalid api key|invalid x-api-key|authentication_error|oauth token/i.test(raw)) {
+    return 'o Claude Code não está logado ou a credencial foi recusada (rode "claude" no terminal e faça login)';
+  }
+  if (/usage limit|limit reached|credit balance/i.test(raw)) return 'limite de uso da assinatura do Claude atingido (usage limit reached)';
+  if (/rate.?limit|\b429\b|too many requests/i.test(raw)) return 'limite de requisições do Claude (rate limit)';
+  if (/overloaded|\b529\b/i.test(raw)) return 'o Claude está sobrecarregado (overloaded); tente mais tarde';
+  const first = raw.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? 'sem saída';
+  const clean = first
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[([{]?\s*"?request[_ -]?id"?\s*[:=]\s*"?[\w-]+"?\s*[)\]}]?/gi, '')
+    .replace(/\breq_[A-Za-z0-9]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return `o Claude Code falhou (código ${code ?? 'sinal'}): ${clean.length > 160 ? `${clean.slice(0, 160)}…` : clean}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +352,7 @@ export class ClaudeCliClient implements LLMClient {
   private readonly timeoutMs: number;
   private readonly formatRetries: number;
   private readonly env: NodeJS.ProcessEnv;
+  private readonly fallbackModel: string;
 
   constructor(private readonly opts: ClaudeCliClientOptions = {}) {
     this.model = opts.model?.trim() || CLAUDE_CLI_DEFAULT_MODEL;
@@ -320,14 +361,20 @@ export class ClaudeCliClient implements LLMClient {
     this.timeoutMs = opts.timeoutMs ?? CLAUDE_CLI_TIMEOUT_MS;
     this.formatRetries = opts.formatRetries ?? 1;
     this.env = opts.env ?? process.env;
+    this.fallbackModel = (opts.fallbackModel ?? CLAUDE_CLI_FALLBACK_MODEL).trim();
+    if (this.fallbackModel && !/^[A-Za-z0-9._:[\]-]+$/.test(this.fallbackModel)) throw new ClaudeCliError(`modelo de fallback inválido: "${this.fallbackModel}"`);
+  }
+
+  private log(line: string): void {
+    this.opts.onLog?.(redactSecrets(line));
   }
 
   /** Flags do `claude`: headless, JSON, sem sessão salva, sem ferramentas internas, sem MCP/skills. */
-  cliArgs(): string[] {
+  cliArgs(model = this.model): string[] {
     return [
       '-p',
       '--output-format', 'json',
-      '--model', this.model,
+      '--model', model,
       '--no-session-persistence',
       '--tools', '',
       '--strict-mcp-config',
@@ -343,8 +390,9 @@ export class ClaudeCliClient implements LLMClient {
     let outputTokens = 0;
     let costUsd = 0;
     let estimated = false;
+    const notices: string[] = [];
     for (let attempt = 0; ; attempt++) {
-      const r = await this.runOnce(prompt);
+      const { r, model } = await this.runGuarded(prompt, req.tag, notices);
       inputTokens += r.inputTokens ?? estimateTokens(CLI_SYSTEM_PROMPT + prompt);
       outputTokens += r.outputTokens ?? estimateTokens(r.result);
       costUsd += r.costUsd ?? 0;
@@ -357,11 +405,13 @@ export class ClaudeCliClient implements LLMClient {
           outputTokens,
           ...(estimated ? { tokensEstimated: true } : {}),
           ...(costUsd ? { costUsd } : {}),
+          model,
+          ...(notices.length ? { notices } : {}),
         };
       } catch (err) {
         if (!(err instanceof ReplyFormatError)) throw err;
         if (attempt >= this.formatRetries) {
-          throw new ClaudeCliError(`resposta do modelo fora do formato JSON exigido após ${attempt + 1} tentativa(s) (agente "${req.tag}"): ${err.message}`);
+          throw new ClaudeCliError(`resposta do modelo fora do formato JSON exigido após ${attempt + 1} tentativa(s) (agente "${req.tag}"): ${err.message}`, r.result);
         }
         prompt =
           `${base}\n\n# Correção necessária\nSua resposta anterior foi recusada: ${err.message}.\n` +
@@ -371,7 +421,39 @@ export class ClaudeCliClient implements LLMClient {
     }
   }
 
-  private runOnce(prompt: string): Promise<CliResult> {
+  /**
+   * Recusa do filtro de segurança: 1 nova tentativa com o mesmo modelo e uma linha neutra no prompt;
+   * se recusar de novo, fallback para `fallbackModel`. O texto bruto de cada recusa vai em `notices` (trace).
+   */
+  private async runGuarded(prompt: string, tag: string, notices: string[]): Promise<{ r: CliResult; model: string }> {
+    const retryPrompt = `${prompt}\n\n${SAFEGUARD_RETRY_LINE}`;
+    const plan = [
+      { model: this.model, prompt },
+      { model: this.model, prompt: retryPrompt },
+      ...(this.fallbackModel && this.fallbackModel !== this.model ? [{ model: this.fallbackModel, prompt: retryPrompt }] : []),
+    ];
+    const refused: string[] = [];
+    const raws: string[] = [];
+    for (const [i, step] of plan.entries()) {
+      if (i > 0) {
+        const prev = refused.at(-1);
+        this.log(`claude-cli [${tag}]: o filtro de segurança recusou (modelo ${prev}); ${step.model === prev ? 'nova tentativa com o mesmo modelo' : `fallback para o modelo ${step.model}`}.`);
+      }
+      try {
+        const r = await this.runOnce(step.prompt, step.model);
+        if (i > 0) this.log(`claude-cli [${tag}]: respondido pelo modelo ${step.model}.`);
+        return { r, model: step.model };
+      } catch (err) {
+        if (!(err instanceof ClaudeSafeguardError)) throw err;
+        refused.push(step.model);
+        raws.push(`[${step.model}] ${err.rawText ?? err.message}`);
+        notices.push(`recusa do filtro de segurança (modelo ${step.model}): ${err.rawText ?? err.message}`);
+      }
+    }
+    throw new ClaudeSafeguardError([...new Set(refused)], raws.join('\n'));
+  }
+
+  private runOnce(prompt: string, model = this.model): Promise<CliResult> {
     return enqueue(async () => {
       const { file, prefixArgs, script } = resolveCommand(this.command, this.env);
       const env: NodeJS.ProcessEnv = { ...this.env };
@@ -381,7 +463,7 @@ export class ClaudeCliClient implements LLMClient {
       // Pasta temporária VAZIA: o Claude Code não lê CLAUDE.md nem o repositório.
       const cwd = await mkdtemp(join(tmpdir(), 'reactest-claude-'));
       try {
-        const p = await runProcess(file, [...prefixArgs, ...this.cliArgs()], prompt, {
+        const p = await runProcess(file, [...prefixArgs, ...this.cliArgs(model)], prompt, {
           cwd,
           env,
           timeoutMs: this.timeoutMs,
@@ -394,9 +476,11 @@ export class ClaudeCliClient implements LLMClient {
           if (p.code === 0) throw err;
         }
         if (p.code !== 0 || !parsed || parsed.isError) {
-          const detail = parsed?.result || p.stderr.trim() || p.stdout.trim() || 'sem saída';
-          throw new ClaudeCliError(`claude falhou (código ${p.code ?? 'sinal'}): ${detail.slice(0, 800)}`);
+          const raw = [parsed?.result, p.stderr.trim(), parsed ? '' : p.stdout.trim()].filter(Boolean).join('\n') || 'sem saída';
+          if (SAFEGUARD_RE.test(raw)) throw new ClaudeSafeguardError([model], raw);
+          throw new ClaudeCliError(cliErrorMessage(p.code, raw), raw);
         }
+        if (/safeguards flagged|reasoning_extraction/i.test(parsed.result)) throw new ClaudeSafeguardError([model], parsed.result);
         return parsed;
       } finally {
         await rm(cwd, { recursive: true, force: true }).catch(() => undefined);

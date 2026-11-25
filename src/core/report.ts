@@ -42,7 +42,7 @@ export function renderReport(record: RunRecord): string {
   if (record.history?.length) {
     lines.push('| # | Categoria da falha | Diagnóstico | Reparo | Recusas |', '|---|---|---|---|---|');
     for (const h of record.history) {
-      lines.push(`| ${h.iteration} | ${h.category ?? '—'} | ${cell(h.summary)} | **${h.repairStatus}**${h.alignedToBehavior ? ' (alinhado ao comportamento)' : ''}: ${cell(h.reasoning)} | ${h.rejectedRepairs} |`);
+      lines.push(`| ${h.iteration} | ${h.category ?? '—'} | ${cell(h.summary)} | **${h.repairStatus}**${h.alignedToBehavior ? ' (alinhado ao comportamento)' : ''}: ${cell(h.note)} | ${h.rejectedRepairs} |`);
     }
   } else {
     lines.push(record.config.heal ? '_Nenhum reparo foi necessário._' : '_Self-healing desativado (baseline)._');

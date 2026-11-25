@@ -246,8 +246,8 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
         rejectedRepairs: heal.rejectedRepairs,
         alignedToBehavior: heal.alignedToBehavior,
         modificationRate: heal.modificationRate,
-        history: heal.history.map(({ iteration, category, summary, repairStatus, reasoning, rejectedRepairs, alignedToBehavior }) => ({
-          iteration, category, summary, repairStatus, reasoning, rejectedRepairs, alignedToBehavior,
+        history: heal.history.map(({ iteration, category, summary, repairStatus, note, rejectedRepairs, alignedToBehavior }) => ({
+          iteration, category, summary, repairStatus, note, rejectedRepairs, alignedToBehavior,
         })),
       };
     } else {

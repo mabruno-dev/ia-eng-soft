@@ -148,5 +148,5 @@ let n = 0;
 export const call = (name: string, args: Record<string, unknown>): { toolCalls: ToolCall[] } => ({
   toolCalls: [{ id: `r${++n}`, name, arguments: args }],
 });
-export const final = (status: string, reasoning: string, extra: { evidence?: string; alignedToBehavior?: boolean } = {}) =>
-  JSON.stringify({ status, reasoning, ...extra });
+export const final = (status: string, note: string, extra: { evidence?: string; alignedToBehavior?: boolean } = {}) =>
+  JSON.stringify({ status, note, ...extra });

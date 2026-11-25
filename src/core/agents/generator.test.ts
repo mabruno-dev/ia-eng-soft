@@ -48,7 +48,7 @@ const scenarios = [
   { name: 'mostra a mensagem da API quando o login falha', kind: 'async', description: 'login rejeita', mocks: ['../services/authApi'], fromRules: ['R9'] },
   { name: 'senha com 7 caracteres é rejeitada', kind: 'edge', description: 'limite', mocks: [], fromRules: ['R2'] },
 ];
-const planJson = (overrides: Record<string, unknown> = {}) => JSON.stringify({ analysis: '1. renderiza... 2. valida...', scenarios, ...overrides });
+const planJson = (overrides: Record<string, unknown> = {}) => JSON.stringify({ scenarios, ...overrides });
 
 const goodCode = `import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -395,12 +395,13 @@ describe('prompts do Gerador', () => {
     expect(GENERATOR_CODE_SYSTEM_PROMPT).toContain('typecheck_test');
   });
 
-  it('seguem AUTOMAT, com CoT no plano e few-shot no código', () => {
+  it('seguem AUTOMAT, com checklist de cobertura no plano e few-shot no código', () => {
     for (const h of ['# Act as', '# User persona', '# Targeted action', '# Output definition', '# Mode of interaction', '# Atypical cases', '# Topic whitelisting']) {
       expect(GENERATOR_PLAN_SYSTEM_PROMPT).toContain(h);
       expect(GENERATOR_CODE_SYSTEM_PROMPT).toContain(h.replace('# Mode of interaction', 'Mode of interaction'));
     }
-    expect(GENERATOR_PLAN_SYSTEM_PROMPT).toMatch(/passo a passo/);
+    expect(GENERATOR_PLAN_SYSTEM_PROMPT).toContain('checklist de cobertura');
+    expect(GENERATOR_PLAN_SYSTEM_PROMPT).not.toContain('"analysis"');
     expect(GENERATOR_CODE_SYSTEM_PROMPT).toContain('NewsletterSignup');
     expect(GENERATOR_CODE_SYSTEM_PROMPT).toContain('NotificationBell');
   });
