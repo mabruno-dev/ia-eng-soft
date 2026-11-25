@@ -28,6 +28,7 @@
     "cli": "tsx src/cli.ts",
     "context": "tsx scripts/context.ts",
     "execute": "tsx scripts/execute.ts",
+    "heal": "tsx scripts/heal.ts",
     "verify:fewshot": "tsx scripts/verify-fewshot.ts"
   },
   "dependencies": {

@@ -1,0 +1,208 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import type { TraceWriter } from './agent/trace';
+import { type Diagnosis, executeTests } from './agents/executor';
+import { type RepairStatus, type RepairTestOptions, type RepairTestResult, repairTest } from './agents/repairer';
+import type { AgentMeter } from './metrics';
+import type { RunJestFn } from './tools/jest';
+import { getWorkspace } from './tools/workspace';
+import type { ContextResult, ExecResult, FailureCategory, LLMClient } from './types';
+
+export type HealStatus = 'PASSED' | 'FAILED' | 'SUSPECTED_COMPONENT_BUG';
+export type StopReason = 'PASSED' | 'MAX_ITERATIONS' | 'REPEATED_ERROR' | 'SUSPECTED_COMPONENT_BUG' | 'GAVE_UP';
+
+export interface HealIteration {
+  iteration: number; // 1-based: nº do reparo
+  category: FailureCategory | null;
+  summary: string;
+  signature: string;
+  numTests: number;
+  numFailed: number;
+  repairStatus: RepairStatus;
+  reasoning: string;
+  rejectedRepairs: number; // recusas do guardrail nesta iteração
+  wrote: boolean;
+}
+
+export interface HealResult {
+  status: HealStatus;
+  stopReason: StopReason;
+  finalCode: string;
+  iterations: number;
+  rejectedRepairs: number;
+  history: HealIteration[];
+  modificationRate: number;
+  /** Última execução do Executor (números das ferramentas). */
+  exec: ExecResult;
+  diagnosis: Diagnosis;
+}
+
+export type ExecuteFn = (o: { iteration: number }) => Promise<{ exec: ExecResult; diagnosis: Diagnosis }>;
+export type RepairFn = (o: RepairTestOptions) => Promise<RepairTestResult>;
+
+export interface HealLoopOptions {
+  ctx: ContextResult;
+  workspaceRoot: string;
+  /** Padrão: ctx.testFilePath. */
+  testFilePath?: string;
+  /** Código gerado pelo Gerador (03); é gravado no arquivo de teste no início. */
+  generatedCode: string;
+  llm: LLMClient;
+  maxIterations: number;
+  rules?: string;
+  maxSteps?: number;
+  trace?: TraceWriter;
+  meter?: AgentMeter;
+  /** Jest injetável (usado pelo Executor e Reparador padrão). */
+  runJest?: RunJestFn;
+  /** Executor injetável (padrão: agente 04). */
+  execute?: ExecuteFn;
+  /** Reparador injetável (padrão: agente 05). */
+  repair?: RepairFn;
+}
+
+// ---- Funções puras ----
+
+/** Primeira linha significativa da falha (pula "● Test suite failed to run" e linhas vazias). */
+export function firstErrorLine(exec: ExecResult): string {
+  const text = exec.suiteError ?? exec.failures[0]?.message ?? '';
+  const line = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l && !l.startsWith('●'));
+  return line ?? '';
+}
+
+/** Assinatura de erro: categoria + teste que falhou + primeira linha da mensagem. */
+export function errorSignature(exec: ExecResult, category: FailureCategory | null): string {
+  return `${category ?? 'NONE'}|${exec.failures[0]?.testName ?? ''}|${firstErrorLine(exec)}`;
+}
+
+const toLines = (s: string) => {
+  const lines = s.replace(/\r\n/g, '\n').split('\n').map((l) => l.trimEnd());
+  while (lines.length && lines.at(-1) === '') lines.pop();
+  return lines;
+};
+
+/** Diff linha a linha (LCS). changed = max(adicionadas, removidas): uma linha substituída conta uma vez. */
+export function lineDiff(before: string, after: string): { added: number; removed: number; changed: number } {
+  const a = toLines(before);
+  const b = toLines(after);
+  const m = a.length;
+  const n = b.length;
+  let prev = new Array<number>(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array<number>(n + 1).fill(0);
+    for (let j = 1; j <= n; j++) cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1]! + 1 : Math.max(prev[j]!, cur[j - 1]!);
+    prev = cur;
+  }
+  const lcs = prev[n]!;
+  const added = n - lcs;
+  const removed = m - lcs;
+  return { added, removed, changed: Math.max(added, removed) };
+}
+
+/** RQ2: linhas alteradas pelo healing / linhas do código gerado inicial (4 casas decimais). */
+export function modificationRate(generated: string, final: string): number {
+  const total = toLines(generated).length;
+  if (total === 0) return 0;
+  return Math.round((lineDiff(generated, final).changed / total) * 10_000) / 10_000;
+}
+
+// ---- Loop ----
+
+/**
+ * Self-healing: Executor → passou? fim → Reparador → (SUSPECTED_COMPONENT_BUG? para) → Executor → ...
+ * até maxIterations reparos. Para cedo se a mesma assinatura de erro aparecer em duas execuções seguidas.
+ */
+export async function healLoop(opts: HealLoopOptions): Promise<HealResult> {
+  const { ctx, workspaceRoot, llm } = opts;
+  const testFilePath = opts.testFilePath ?? ctx.testFilePath;
+  const abs = getWorkspace(workspaceRoot).abs(testFilePath);
+  writeFileSync(abs, opts.generatedCode, 'utf8');
+
+  const common = {
+    ...(opts.maxSteps !== undefined ? { maxSteps: opts.maxSteps } : {}),
+    ...(opts.trace ? { trace: opts.trace } : {}),
+    ...(opts.meter ? { meter: opts.meter } : {}),
+    ...(opts.runJest ? { runJest: opts.runJest } : {}),
+  };
+  const execute: ExecuteFn = opts.execute ?? (() => executeTests({ ctx, workspaceRoot, testFilePath, llm, ...common }));
+  const repair: RepairFn = opts.repair ?? repairTest;
+
+  const history: HealIteration[] = [];
+  const previousAttempts: string[] = [];
+  let rejectedRepairs = 0;
+  let iterations = 0;
+  let prevSignature: string | undefined;
+  let stopReason: StopReason;
+  let status: HealStatus;
+  let { exec, diagnosis } = await execute({ iteration: 0 });
+
+  while (true) {
+    if (exec.passed) {
+      [status, stopReason] = ['PASSED', 'PASSED'];
+      break;
+    }
+    const signature = errorSignature(exec, diagnosis.category);
+    if (prevSignature !== undefined && signature === prevSignature) {
+      [status, stopReason] = ['FAILED', 'REPEATED_ERROR'];
+      break;
+    }
+    if (iterations >= opts.maxIterations) {
+      [status, stopReason] = ['FAILED', 'MAX_ITERATIONS'];
+      break;
+    }
+
+    iterations++;
+    const r = await repair({
+      ctx,
+      workspaceRoot,
+      testFilePath,
+      exec,
+      diagnosis,
+      llm,
+      ...(opts.rules ? { rules: opts.rules } : {}),
+      ...(previousAttempts.length ? { previousAttempts: [...previousAttempts] } : {}),
+      ...common,
+    });
+    rejectedRepairs += r.rejectedRepairs;
+    history.push({
+      iteration: iterations,
+      category: diagnosis.category,
+      summary: diagnosis.summary,
+      signature,
+      numTests: exec.numTests,
+      numFailed: exec.numFailed,
+      repairStatus: r.status,
+      reasoning: r.reasoning,
+      rejectedRepairs: r.rejectedRepairs,
+      wrote: r.wrote,
+    });
+    previousAttempts.push(`iteração ${iterations} [${diagnosis.category ?? '-'}] ${firstErrorLine(exec)} → ${r.status}: ${r.reasoning}`);
+
+    if (r.status === 'SUSPECTED_COMPONENT_BUG') {
+      [status, stopReason] = ['SUSPECTED_COMPONENT_BUG', 'SUSPECTED_COMPONENT_BUG'];
+      break;
+    }
+    if (!r.wrote) {
+      // Nada mudou no arquivo: reexecutar daria o mesmo resultado.
+      [status, stopReason] = ['FAILED', 'GAVE_UP'];
+      break;
+    }
+    prevSignature = signature;
+    ({ exec, diagnosis } = await execute({ iteration: iterations }));
+  }
+
+  const finalCode = readFileSync(abs, 'utf8');
+  return {
+    status,
+    stopReason,
+    finalCode,
+    iterations,
+    rejectedRepairs,
+    history,
+    modificationRate: modificationRate(opts.generatedCode, finalCode),
+    exec,
+    diagnosis,
+  };
+}
