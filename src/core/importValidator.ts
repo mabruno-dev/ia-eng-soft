@@ -6,6 +6,8 @@ export interface ModuleReference {
   specifier: string;
   line: number; // 1-based
   via: 'import' | 'export' | 'require' | 'jest.mock' | 'dynamic-import';
+  /** Para via = 'jest.mock': a função usada (mock, requireActual, doMock...). */
+  jestFn?: string;
 }
 
 export interface ImportValidation {
@@ -22,9 +24,10 @@ const JEST_MODULE_FNS = new Set(['mock', 'requireActual', 'requireMock', 'doMock
 export function extractModuleReferences(code: string, fileName = 'test.tsx'): ModuleReference[] {
   const sf = ts.createSourceFile(fileName, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const refs: ModuleReference[] = [];
-  const add = (lit: ts.Node | undefined, via: ModuleReference['via']) => {
+  const add = (lit: ts.Node | undefined, via: ModuleReference['via'], jestFn?: string) => {
     if (lit && (ts.isStringLiteral(lit) || ts.isNoSubstitutionTemplateLiteral(lit))) {
-      refs.push({ specifier: lit.text, line: sf.getLineAndCharacterOfPosition(lit.getStart(sf)).line + 1, via });
+      const line = sf.getLineAndCharacterOfPosition(lit.getStart(sf)).line + 1;
+      refs.push({ specifier: lit.text, line, via, ...(jestFn ? { jestFn } : {}) });
     }
   };
   const visit = (node: ts.Node) => {
@@ -42,7 +45,7 @@ export function extractModuleReferences(code: string, fileName = 'test.tsx'): Mo
         e.expression.text === 'jest' &&
         JEST_MODULE_FNS.has(e.name.text)
       ) {
-        add(node.arguments[0], 'jest.mock');
+        add(node.arguments[0], 'jest.mock', e.name.text);
       }
     }
     ts.forEachChild(node, visit);

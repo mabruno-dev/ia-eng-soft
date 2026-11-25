@@ -25,7 +25,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "cli": "tsx src/cli.ts",
-    "context": "tsx scripts/context.ts"
+    "context": "tsx scripts/context.ts",
+    "verify:fewshot": "tsx scripts/verify-fewshot.ts"
   },
   "dependencies": {
     "commander": "^15.1.0",
