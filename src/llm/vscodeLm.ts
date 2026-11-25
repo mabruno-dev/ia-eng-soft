@@ -1,6 +1,7 @@
 // Único arquivo fora de src/extension autorizado a importar `vscode`.
+// Tool calling (LanguageModelChatTool / ToolCallPart / ToolResultPart) exige VS Code >= 1.95.
 import * as vscode from 'vscode';
-import type { LLMClient, LLMRequest, LLMResponse } from '../core/types';
+import type { LLMClient, LLMRequest, LLMResponse, ToolCall } from '../core/types';
 
 export interface VSCodeLmClientOptions {
   /** Filtra o modelo do Copilot por família (ex.: 'gpt-4o'). */
@@ -32,34 +33,79 @@ export class VSCodeLmClient implements LLMClient {
 
   async complete(req: LLMRequest): Promise<LLMResponse> {
     const model = await this.getModel();
-
-    // A API vscode.lm não tem papel "system": o system vai como primeira mensagem do usuário.
-    const messages: vscode.LanguageModelChatMessage[] = [];
-    if (req.system) messages.push(vscode.LanguageModelChatMessage.User(req.system));
-    for (const m of req.messages) {
-      messages.push(
-        m.role === 'user'
-          ? vscode.LanguageModelChatMessage.User(m.content)
-          : vscode.LanguageModelChatMessage.Assistant(m.content),
-      );
-    }
-    if (req.jsonMode) {
-      // Não há response_format na API: reforçamos via instrução.
-      messages.push(vscode.LanguageModelChatMessage.User('Responda apenas com um objeto JSON válido, sem texto adicional.'));
-    }
+    const messages = toVSCodeMessages(req);
 
     const token = this.opts.cancellationToken ?? new vscode.CancellationTokenSource().token;
-    const options: vscode.LanguageModelChatRequestOptions =
-      req.temperature !== undefined ? { modelOptions: { temperature: req.temperature } } : {};
+    const options: vscode.LanguageModelChatRequestOptions = {};
+    if (req.temperature !== undefined) options.modelOptions = { temperature: req.temperature };
+    if (req.tools?.length) {
+      options.tools = req.tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.parameters }));
+    }
     const response = await model.sendRequest(messages, options, token);
 
     let text = '';
-    for await (const chunk of response.text) text += chunk;
+    const toolCalls: ToolCall[] = [];
+    for await (const part of response.stream) {
+      if (part instanceof vscode.LanguageModelTextPart) {
+        text += part.value;
+      } else if (part instanceof vscode.LanguageModelToolCallPart) {
+        toolCalls.push({ id: part.callId, name: part.name, arguments: { ...(part.input as Record<string, unknown>) } });
+      }
+    }
 
-    const inputCounts = await Promise.all(messages.map((m) => model.countTokens(m, token)));
-    const inputTokens = inputCounts.reduce((a, b) => a + b, 0);
-    const outputTokens = text ? await model.countTokens(text, token) : 0;
+    const count = async (m: string | vscode.LanguageModelChatMessage): Promise<number> => {
+      try {
+        return await model.countTokens(m, token);
+      } catch {
+        // Alguns modelos não contam mensagens com partes de ferramenta: estimativa ~4 caracteres/token.
+        return Math.ceil(JSON.stringify(m).length / 4);
+      }
+    };
+    const inputTokens = (await Promise.all(messages.map(count))).reduce((a, b) => a + b, 0);
+    const outputText = text + (toolCalls.length ? JSON.stringify(toolCalls) : '');
+    const outputTokens = outputText ? await count(outputText) : 0;
 
-    return { text, inputTokens, outputTokens };
+    return { text, ...(toolCalls.length ? { toolCalls } : {}), inputTokens, outputTokens };
   }
+}
+
+/**
+ * ChatMessage[] → mensagens da API vscode.lm.
+ * - Não há papel "system": ele vai como primeira mensagem do usuário.
+ * - toolCalls do assistente viram LanguageModelToolCallPart.
+ * - Mensagens `tool` consecutivas viram LanguageModelToolResultPart dentro de UMA mensagem de usuário.
+ */
+function toVSCodeMessages(req: LLMRequest): vscode.LanguageModelChatMessage[] {
+  const out: vscode.LanguageModelChatMessage[] = [];
+  if (req.system) out.push(vscode.LanguageModelChatMessage.User(req.system));
+  let pendingResults: vscode.LanguageModelToolResultPart[] = [];
+  const flush = () => {
+    if (pendingResults.length) out.push(vscode.LanguageModelChatMessage.User(pendingResults));
+    pendingResults = [];
+  };
+  for (const m of req.messages) {
+    if (m.role === 'tool') {
+      pendingResults.push(
+        new vscode.LanguageModelToolResultPart(m.toolCallId, [new vscode.LanguageModelTextPart(m.content)]),
+      );
+      continue;
+    }
+    flush();
+    if (m.role === 'user') {
+      out.push(vscode.LanguageModelChatMessage.User(m.content));
+    } else if (m.toolCalls?.length) {
+      const parts: (vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart)[] = [];
+      if (m.content) parts.push(new vscode.LanguageModelTextPart(m.content));
+      for (const c of m.toolCalls) parts.push(new vscode.LanguageModelToolCallPart(c.id, c.name, c.arguments));
+      out.push(vscode.LanguageModelChatMessage.Assistant(parts));
+    } else {
+      out.push(vscode.LanguageModelChatMessage.Assistant(m.content));
+    }
+  }
+  flush();
+  if (req.jsonMode) {
+    // Não há response_format na API: reforçamos via instrução.
+    out.push(vscode.LanguageModelChatMessage.User('Responda apenas com um objeto JSON válido, sem texto adicional.'));
+  }
+  return out;
 }

@@ -1,16 +1,34 @@
 // Contratos compartilhados da pipeline ReacTest-Agent (ver CLAUDE.md, seção "Contratos").
 // Este arquivo não pode importar `vscode`.
 
+// ---- LLM com tool calling ----
+export interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>; // JSON Schema (type: 'object')
+}
+export interface ToolCall { id: string; name: string; arguments: Record<string, unknown> }
+export type ChatMessage =
+  | { role: 'user' | 'assistant'; content: string; toolCalls?: ToolCall[] }
+  | { role: 'tool'; toolCallId: string; name: string; content: string };
+
 export interface LLMRequest {
   system: string;
-  messages: { role: 'user' | 'assistant'; content: string }[];
+  messages: ChatMessage[];
+  tools?: ToolSpec[];
   temperature?: number;
   jsonMode?: boolean;
   tag: string; // nome do agente, para métricas
 }
-export interface LLMResponse { text: string; inputTokens: number; outputTokens: number }
+export interface LLMResponse {
+  text: string;
+  toolCalls?: ToolCall[];
+  inputTokens: number;
+  outputTokens: number;
+}
 export interface LLMClient { complete(req: LLMRequest): Promise<LLMResponse> }
 
+// ---- Domínio ----
 export interface ImportInfo {
   name: string;
   specifier: string; // JÁ relativo ao testFilePath quando for arquivo local
@@ -60,6 +78,7 @@ export interface PipelineConfig {
   elicit: boolean;
   verify: boolean;
   maxIterations: number;
+  maxAgentSteps: number;
   model: string;
   provider: 'openai' | 'vscode';
 }
@@ -78,6 +97,7 @@ export interface RunRecord {
   smells?: string[];
   rejectedRepairs: number;                // RQ1: reparos indevidos barrados pelo guardrail
   llm: { calls: number; inputTokens: number; outputTokens: number }; // RQ5
+  agents: Record<string, { steps: number; toolCalls: number }>;      // RQ5
   timings: { totalMs: number; perAgentMs: Record<string, number> };  // RQ5
   elicitation?: { questions: number; answered: number; derivedCases: number }; // RQ4
 }

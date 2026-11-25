@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FakeLLM } from '../llm/fake';
-import { MeteredLLM, StageTimer, newRunId, writeRunRecord } from './metrics';
+import { AgentMeter, MeteredLLM, StageTimer, newRunId, writeRunRecord } from './metrics';
 import type { LLMRequest, RunRecord } from './types';
 
 const req = (tag: string): LLMRequest => ({ system: 's', messages: [{ role: 'user', content: 'u' }], tag });
@@ -63,7 +63,7 @@ describe('writeRunRecord', () => {
     const record: RunRecord = {
       runId: newRunId(new Date('2026-11-24T22:15:30.123Z')),
       component: 'src/components/LoginForm.tsx',
-      config: { heal: true, elicit: false, verify: false, maxIterations: 3, model: 'gpt-4o-mini', provider: 'openai' },
+      config: { heal: true, elicit: false, verify: false, maxIterations: 3, maxAgentSteps: 8, model: 'gpt-4o-mini', provider: 'openai' },
       status: 'PASSED',
       iterations: 1,
       generated: { code: 'it("x", () => {})', lines: 1 },
@@ -72,6 +72,7 @@ describe('writeRunRecord', () => {
       coverage: { statements: 90, branches: 80, functions: 100, lines: 90 },
       rejectedRepairs: 0,
       llm: { calls: 2, inputTokens: 100, outputTokens: 50 },
+      agents: { generator: { steps: 2, toolCalls: 1 } },
       timings: { totalMs: 1234, perAgentMs: { generator: 800 } },
     };
 
@@ -81,5 +82,31 @@ describe('writeRunRecord', () => {
     expect(file).toBe(join(dir, '.reactest', 'runs', `${record.runId}.json`));
     expect(await readdir(join(dir, '.reactest', 'runs'))).toEqual([`${record.runId}.json`]);
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(record);
+  });
+
+  it('registra agents[nome] = { steps, toolCalls } a partir do AgentMeter', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'reactest-'));
+    const meter = new AgentMeter();
+    meter.record('context', { steps: 3, toolCalls: 4 });
+    meter.record('repairer', { steps: 2, toolCalls: 1 });
+    meter.record('repairer', { steps: 1, toolCalls: 2 });
+    const record = {
+      runId: newRunId(),
+      component: 'X.tsx',
+      config: { heal: true, elicit: true, verify: true, maxIterations: 3, maxAgentSteps: 8, model: 'm', provider: 'openai' },
+      status: 'FAILED',
+      iterations: 0,
+      generated: { code: '', lines: 0 },
+      final: { code: '', lines: 0 },
+      modificationRate: 0,
+      coverage: { statements: 0, branches: 0, functions: 0, lines: 0 },
+      rejectedRepairs: 0,
+      llm: { calls: 0, inputTokens: 0, outputTokens: 0 },
+      agents: {},
+      timings: { totalMs: 0, perAgentMs: {} },
+    } satisfies RunRecord;
+
+    const saved = JSON.parse(await readFile(await writeRunRecord(dir, record, meter), 'utf8')) as RunRecord;
+    expect(saved.agents).toEqual({ context: { steps: 3, toolCalls: 4 }, repairer: { steps: 3, toolCalls: 3 } });
   });
 });
