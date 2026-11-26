@@ -13,7 +13,8 @@ O commit de cada pasta foi identificado pelo horário dos `runId` (UTC) comparad
 - Código: **antes das correções de `3e64cc3`** (árvore de trabalho sobre `48229dc`, com o runner de avaliação
   ainda não commitado; ele entrou em `4c84e4e`). Runs entre 03:03 e 03:15 UTC de 25/11/2026.
 - 12 runs. Status: C1 0/6 PASSED; C2 3/6 PASSED, 2 FAILED, 1 SUSPECTED_COMPONENT_BUG.
-- ⚠️ **Button C1 está contaminada por uma execução concorrente**. Trate esta pasta como **11 execuções válidas**:
+- ⚠️ **Button C1 está contaminada por uma execução concorrente**. Trate esta pasta como **11 execuções válidas**: desconsidere Button C1,
+  inclusive nos agregados de C1.
 
 ## `pos-correcoes-sem-elicitacao/`
 
