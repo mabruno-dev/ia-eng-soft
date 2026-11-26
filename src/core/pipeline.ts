@@ -9,7 +9,7 @@ import { elicitRules, type ElicitationStats } from './agents/elicitation';
 import { type Diagnosis, executeTests } from './agents/executor';
 import { generateTest } from './agents/generator';
 import { type RepairTestOptions, repairTest } from './agents/repairer';
-import { type HealIteration, healLoop, syncTestFile } from './healLoop';
+import { healLoop, syncTestFile } from './healLoop';
 import { AgentMeter, MeteredLLM, newRunId, StageTimer, writeRunRecord } from './metrics';
 import { acquireTestFileLock } from './runLock';
 import type { RunJestFn } from './tools/jest';
@@ -17,9 +17,10 @@ import { VERIFIER_MAX_STEPS, type VerifierMode, verifyTest } from './agents/veri
 import type { RunMutationFn } from './tools/mutation';
 import type { TypecheckFn } from './tools/typecheck';
 import { canonicalPath, getWorkspace } from './tools/workspace';
-import type { Asker, ContextResult, Coverage, ExecResult, LLMClient, PipelineConfig, RunRecord } from './types';
+import type { AgentId, Asker, ContextResult, Coverage, ExecResult, LLMClient, PipelineConfig, PipelineEvent, RunRecord, Stage } from './types';
+import { PIPELINE_AGENTS, agentOf, toolCallEvents } from './events';
 
-export type Stage = 'context' | 'elicitation' | 'generator' | 'write' | 'heal' | 'executor' | 'verifier' | 'record';
+export type { PipelineEvent, Stage } from './types';
 
 export const STAGE_LABELS: Record<Stage, string> = {
   context: 'Contexto',
@@ -42,13 +43,6 @@ export const AGENT_LABELS: Record<string, string> = {
   repairer: 'Reparador',
   verifier: 'Verificador',
 };
-
-export type PipelineEvent =
-  | { type: 'stage-start'; stage: Stage; label: string }
-  | { type: 'stage-end'; stage: Stage; label: string; ms: number; ok: boolean; summary?: string }
-  | { type: 'agent-step'; agent: string; label: string; entry: TraceEntry }
-  | { type: 'iteration'; iteration: HealIteration }
-  | { type: 'error'; message: string };
 
 export interface RunPipelineOptions {
   workspaceRoot: string;
@@ -133,9 +127,36 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
   const llm = new MeteredLLM(opts.llm);
   const meter = new AgentMeter();
   const timer = new StageTimer();
-  const trace = new ObservedTraceWriter(workspaceRoot, runId, (entry) =>
-    emit({ type: 'agent-step', agent: entry.agent, label: AGENT_LABELS[entry.agent] ?? entry.agent, entry }),
-  );
+  const trace = new ObservedTraceWriter(workspaceRoot, runId, (entry) => {
+    emit({ type: 'agent-step', agent: entry.agent, label: AGENT_LABELS[entry.agent] ?? entry.agent, entry });
+    for (const ev of toolCallEvents(entry)) emit(ev);
+  });
+  const t0Run = performance.now();
+  const total = PIPELINE_AGENTS.length;
+  const agentMeta = (agent: AgentId) => {
+    const index = PIPELINE_AGENTS.findIndex((a) => a.id === agent) + 1;
+    return { agent, label: PIPELINE_AGENTS[index - 1]!.label, index, total };
+  };
+  /** Envolve a execução de um agente com agent_start / agent_end (só observação: não muda a lógica). */
+  const observeAgent = async <T>(agent: AgentId, fn: () => Promise<T>, summarize?: (r: T) => string): Promise<T> => {
+    emit({ type: 'agent_start', ...agentMeta(agent) });
+    const t0 = performance.now();
+    try {
+      const r = await fn();
+      let summary = '';
+      try {
+        summary = summarize ? summarize(r) : '';
+      } catch {
+        /* resumo é só para a UI */
+      }
+      emit({ type: 'agent_end', ...agentMeta(agent), ms: performance.now() - t0, status: 'done', summary });
+      return r;
+    } catch (err) {
+      emit({ type: 'agent_end', ...agentMeta(agent), ms: performance.now() - t0, status: 'error', summary: errMsg(err) });
+      throw err;
+    }
+  };
+  const skipAgent = (agent: AgentId, reason: string) => emit({ type: 'agent_end', ...agentMeta(agent), ms: 0, status: 'skipped', summary: reason });
   const common = { llm, trace, meter, maxSteps: config.maxAgentSteps };
 
   /** Executa uma etapa emitindo stage-start/stage-end; `agent` é a chave de tempo por agente (se houver). */
@@ -143,8 +164,10 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
     const label = STAGE_LABELS[name];
     emit({ type: 'stage-start', stage: name, label });
     const t0 = performance.now();
+    const ui = agent ? agentOf(agent) : undefined;
+    const run = ui ? () => observeAgent(ui, fn, summarize) : fn;
     try {
-      const r = agent ? await timer.time(agent, fn) : await fn();
+      const r = agent ? await timer.time(agent, run) : await run();
       emit({ type: 'stage-end', stage: name, label, ms: performance.now() - t0, ok: true, ...(summarize ? { summary: summarize(r) } : {}) });
       return r;
     } catch (err) {
@@ -173,8 +196,19 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
     // 02 — Elicitação: regras de negócio que o código não revela (perguntas ao dev via Asker)
     let rules: string | undefined;
     let elicitationStats: ElicitationStats | undefined;
+    if (!config.elicit) skipAgent('elicitation', 'elicitação desligada');
     if (config.elicit) {
       const maxQuestions = opts.maxQuestions ?? 5;
+      const inner = opts.asker ?? new NoopAsker();
+      let asked = 0;
+      // Observa cada pergunta (evento 'question') antes de repassá-la ao Asker real.
+      const asker: Asker = {
+        ask: (q) => {
+          asked++;
+          emit({ type: 'question', id: q.id, text: q.question, why: q.why, index: asked, total: maxQuestions });
+          return inner.ask(q);
+        },
+      };
       const el = await stage(
         'elicitation',
         'elicitation',
@@ -183,7 +217,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
             ...common,
             ctx,
             workspaceRoot,
-            asker: opts.asker ?? new NoopAsker(),
+            asker,
             maxQuestions,
             maxSteps: Math.max(config.maxAgentSteps, 2 * maxQuestions + 4),
           }),
@@ -220,10 +254,16 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
     const tfp = testFilePath;
     const execute = (iteration: number) =>
       timer.time('executor', () =>
-        opts.execute
-          ? opts.execute({ ctx, testFilePath: tfp, iteration })
-          : executeTests({ ...common, ctx, workspaceRoot, testFilePath: tfp, ...(opts.runJest ? { runJest: opts.runJest } : {}) }),
+        observeAgent(
+          'executor',
+          () =>
+            opts.execute
+              ? opts.execute({ ctx, testFilePath: tfp, iteration })
+              : executeTests({ ...common, ctx, workspaceRoot, testFilePath: tfp, ...(opts.runJest ? { runJest: opts.runJest } : {}) }),
+          (x) => (x.exec.passed ? `passou (${x.exec.numTests} testes)` : `falhou: ${x.exec.numFailed}/${x.exec.numTests}${x.diagnosis.category ? ` · ${x.diagnosis.category}` : ''}`),
+        ),
       );
+    let repairerRan = false;
 
     let status: RunRecord['status'];
     let exec: ExecResult;
@@ -240,11 +280,15 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
           ...(rules ? { rules } : {}),
           ...(opts.runJest ? { runJest: opts.runJest } : {}),
           execute: ({ iteration }) => execute(iteration),
-          repair: (o: RepairTestOptions) => timer.time('repairer', () => repairTest(o)),
-          onIteration: (h) => emit({ type: 'iteration', iteration: h }),
+          repair: (o: RepairTestOptions) => {
+            repairerRan = true;
+            return timer.time('repairer', () => observeAgent('repairer', () => repairTest(o), (r) => `${r.status}${r.rejectedRepairs ? ` · ${r.rejectedRepairs} recusado(s) pelo guardrail` : ''}`));
+          },
+          onIteration: (h) => emit({ type: 'iteration', n: h.iteration, category: h.category, summary: h.summary, iteration: h }),
         }),
         (h) => `${h.status} (${h.stopReason}) após ${h.iterations} iteração(ões)`,
       );
+      if (!repairerRan) skipAgent('repairer', 'não foi necessário');
       status = heal.status;
       exec = heal.exec;
       finalCode = heal.finalCode;
@@ -265,6 +309,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
         if (warning) await trace.write({ agent: 'pipeline', step: 0, kind: 'warning', text: `${warning}: ${tfp}`, llmMs: 0, ms: 0 });
         return execute(0);
       }, (x) => (x.exec.passed ? 'passou' : `falhou (${x.diagnosis.category ?? '?'})`));
+      skipAgent('repairer', 'cura desligada (baseline)');
       exec = r.exec;
       status = exec.passed ? 'PASSED' : 'FAILED';
       finalCode = generatedCode;
@@ -272,6 +317,8 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
     }
 
     // 06 — Verificador: só com a suíte PASSANDO (o Stryker exige o teste verde). Não altera o teste.
+    if (!config.verify) skipAgent('verifier', 'Verificador desligado');
+    else if (status !== 'PASSED') skipAgent('verifier', `só roda com a suíte passando (status ${status})`);
     if (config.verify && status === 'PASSED') {
       const finalTestCode = finalCode;
       try {
@@ -372,6 +419,24 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunRecord> 
     } finally {
       releaseLock?.();
     }
+    const files = runFiles(workspaceRoot, runId);
+    emit({
+      type: 'result',
+      runId,
+      component: componentPath,
+      status: done.status,
+      coverage: done.coverage,
+      ...(done.mutation ? { mutation: done.mutation } : {}),
+      iterations: done.iterations,
+      tokens: { input: done.llm.inputTokens, output: done.llm.outputTokens, estimated: !!done.llm.tokensEstimated },
+      ...(done.llm.costUsd !== undefined ? { costUsd: done.llm.costUsd } : {}),
+      ms: performance.now() - t0Run,
+      suggestions: done.verification?.suggestions ?? [],
+      ...(done.testFilePath ? { testFilePath: done.testFilePath } : {}),
+      recordPath: files.record,
+      tracePath: files.trace,
+      ...(done.error ? { error: done.error } : {}),
+    });
     return done;
   }
 }

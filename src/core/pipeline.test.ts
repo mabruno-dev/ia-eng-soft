@@ -424,3 +424,129 @@ describe('Verificador (06) na pipeline', () => {
     expect(broken.verification).toEqual({ suggestions: [], error: 'mutação n/d: Stryker não encontrado no workspace' });
   });
 });
+
+describe('eventos por agente (painel / barra de status)', () => {
+  /** Sequência compacta só dos eventos por agente. */
+  const seq = (events: PipelineEvent[]) =>
+    events.flatMap((e) => {
+      switch (e.type) {
+        case 'agent_start': return [`start ${e.index}/${e.total} ${e.agent}`];
+        case 'agent_end': return [`end ${e.agent} ${e.status}`];
+        case 'tool_call': return [`tool ${e.agent} ${e.tool} ${e.ok ? 'ok' : 'falhou'}`];
+        case 'question': return [`question ${e.index}/${e.total} ${e.id}`];
+        case 'iteration': return [`iteration ${e.n} ${e.category}`];
+        case 'result': return [`result ${e.status}`];
+        default: return [];
+      }
+    });
+
+  it('pipeline completa com LLM falso: ordem dos 6 agentes, ferramentas, pergunta, iteração da cura e resultado', async () => {
+    const Q = 'A senha tem tamanho mínimo?';
+    const A = 'Sim: pelo menos 8 caracteres.';
+    const fake = new FakeLLM({
+      context: contextScript(),
+      elicitation: [
+        call('read_rules', { component: COMPONENT }),
+        call('ask_user', { question: Q, why: 'valor-limite do teste de validação' }),
+        call('save_rule', { id: 'R1', question: Q, answer: A }),
+        JSON.stringify({ rules: [{ id: 'R1', question: Q, answer: A }] }),
+      ],
+      ...generatorScript(GOOD),
+      [REPAIRER_AGENT]: [call('write_test', { code: `${GOOD}// revisado\n` }), final('REPAIRED', 'Corrigido.')],
+      verifier: [
+        call('run_mutation', { componentFile: COMPONENT }),
+        JSON.stringify({ suggestions: [{ mutantId: '7', line: 1, description: 'limite exato', suggestedAssertion: 'expect(x).toBe(1)' }] }),
+      ],
+    });
+    let first = true;
+    const ex = scriptedExecutor(ws.root, (code) => {
+      if (first) {
+        first = false;
+        return execs.importFail();
+      }
+      return code.includes('// revisado') ? execs.pass() : execs.importFail();
+    });
+    const mutation = {
+      score: 75, killed: 3, survived: 1, timeout: 0, noCoverage: 0, total: 4,
+      survivors: [{ id: '7', mutator: 'EqualityOperator', line: 12, original: 'a > b', replacement: 'a >= b', status: 'Survived' as const }],
+      survivorsTotal: 1, reportFile: 'x', ms: 1,
+    };
+    const events: PipelineEvent[] = [];
+    const r = await runPipeline({
+      typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ elicit: true, verify: true }), llm: fake,
+      asker: { ask: async () => A }, execute: ex.execute, runMutation: async () => mutation, onEvent: (e) => events.push(e),
+    });
+
+    expect(r.status).toBe('PASSED');
+    expect(seq(events)).toEqual([
+      'start 1/6 context',
+      'tool context relative_specifier ok',
+      'tool context relative_specifier ok',
+      'end context done',
+      'start 2/6 elicitation',
+      'tool elicitation read_rules ok',
+      'question 1/5 Q1',
+      'tool elicitation ask_user ok',
+      'tool elicitation save_rule ok',
+      'end elicitation done',
+      'start 3/6 generator',
+      'tool generator validate_imports ok',
+      'tool generator typecheck_test ok',
+      'end generator done',
+      'start 4/6 executor',
+      'end executor done',
+      'start 5/6 repairer',
+      'tool repairer write_test ok',
+      'end repairer done',
+      'iteration 1 IMPORT',
+      'start 4/6 executor',
+      'end executor done',
+      'start 6/6 verifier',
+      'tool verifier run_mutation ok',
+      'end verifier done',
+      'result PASSED',
+    ]);
+    const q = events.find((e) => e.type === 'question');
+    expect(q).toMatchObject({ text: Q, why: 'valor-limite do teste de validação' });
+    expect(events.find((e) => e.type === 'agent_end' && e.agent === 'executor')).toMatchObject({ summary: expect.stringMatching(/^falhou/) });
+    expect(events.find((e) => e.type === 'tool_call' && e.tool === 'ask_user')).toMatchObject({ summary: A });
+    const result = events.at(-1);
+    expect(result).toMatchObject({
+      type: 'result', status: 'PASSED', iterations: 1, coverage: r.coverage,
+      mutation: { score: 75, killed: 3, total: 4 },
+      tokens: { input: r.llm.inputTokens, output: r.llm.outputTokens, estimated: false },
+      suggestions: [{ mutantId: '7', line: 12 }],
+      testFilePath: TEST_FILE, recordPath: runFiles(ws.root, r.runId).record, tracePath: runFiles(ws.root, r.runId).trace,
+    });
+  });
+
+  it('agentes não executados aparecem como ignorados (baseline sem elicitação, cura e Verificador)', async () => {
+    const events: PipelineEvent[] = [];
+    await runPipeline({
+      typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config({ heal: false, verify: true }),
+      llm: new FakeLLM({ context: contextScript(), ...generatorScript(GOOD) }),
+      execute: scriptedExecutor(ws.root, () => execs.asyncFail()).execute, onEvent: (e) => events.push(e),
+    });
+    expect(seq(events).filter((s) => !s.startsWith('tool'))).toEqual([
+      'start 1/6 context', 'end context done',
+      'end elicitation skipped',
+      'start 3/6 generator', 'end generator done',
+      'start 4/6 executor', 'end executor done',
+      'end repairer skipped',
+      'end verifier skipped',
+      'result FAILED',
+    ]);
+    expect(events.find((e) => e.type === 'agent_end' && e.agent === 'verifier')).toMatchObject({ summary: 'só roda com a suíte passando (status FAILED)' });
+  });
+
+  it('erro em um agente: agent_end com status error e result ERROR', async () => {
+    const events: PipelineEvent[] = [];
+    const r = await runPipeline({
+      typecheck: tcOk, workspaceRoot: ws.root, componentPath: COMPONENT, config: config(),
+      llm: new FakeLLM({ context: ['isto não é JSON', 'nem isto'] }), onEvent: (e) => events.push(e),
+    });
+    expect(r.status).toBe('ERROR');
+    expect(seq(events).filter((s) => !s.startsWith('tool'))).toEqual(['start 1/6 context', 'end context error', 'result ERROR']);
+    expect(events.at(-1)).toMatchObject({ type: 'result', error: r.error });
+  });
+});

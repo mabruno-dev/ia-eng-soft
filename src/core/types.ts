@@ -1,5 +1,7 @@
 // Contratos compartilhados da pipeline ReacTest-Agent (ver CLAUDE.md, seção "Contratos").
 // Este arquivo não pode importar `vscode`.
+import type { TraceEntry } from './agent/trace';
+import type { HealIteration } from './healLoop';
 
 // ---- LLM com tool calling ----
 export interface ToolSpec {
@@ -153,3 +155,43 @@ export interface AskerQuestion {
 export interface Asker {
   ask(q: AskerQuestion): Promise<string | undefined>;
 }
+
+// ---- Eventos da pipeline (CLI, OutputChannel e painel da extensão consomem o mesmo fluxo) ----
+
+export type Stage = 'context' | 'elicitation' | 'generator' | 'write' | 'heal' | 'executor' | 'verifier' | 'record';
+
+/** Os 6 agentes da pipeline, na ordem fixa do orquestrador. */
+export type AgentId = 'context' | 'elicitation' | 'generator' | 'executor' | 'repairer' | 'verifier';
+
+export type AgentEndStatus = 'done' | 'error' | 'skipped';
+
+export type PipelineEvent =
+  // Eventos detalhados (terminal / OutputChannel)
+  | { type: 'stage-start'; stage: Stage; label: string }
+  | { type: 'stage-end'; stage: Stage; label: string; ms: number; ok: boolean; summary?: string }
+  | { type: 'agent-step'; agent: string; label: string; entry: TraceEntry }
+  | { type: 'error'; message: string }
+  // Cura: uma iteração Executor ⇄ Reparador concluída
+  | { type: 'iteration'; n: number; category: FailureCategory | null; summary: string; iteration: HealIteration }
+  // Eventos por agente (painel, barra de status, progresso)
+  | { type: 'agent_start'; agent: AgentId; label: string; index: number; total: number }
+  | { type: 'tool_call'; agent: AgentId; label: string; tool: string; argsSummary: string; ok: boolean; summary: string }
+  | { type: 'agent_end'; agent: AgentId; label: string; index: number; total: number; ms: number; status: AgentEndStatus; summary: string }
+  | { type: 'question'; id: string; text: string; why: string; index: number; total?: number }
+  | {
+      type: 'result';
+      runId: string;
+      component: string;
+      status: RunRecord['status'];
+      coverage: Coverage;
+      mutation?: RunRecord['mutation'];
+      iterations: number;
+      tokens: { input: number; output: number; estimated: boolean };
+      costUsd?: number;
+      ms: number;
+      suggestions: VerifierSuggestion[];
+      testFilePath?: string;
+      recordPath: string;
+      tracePath: string;
+      error?: string;
+    };

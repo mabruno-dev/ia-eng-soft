@@ -1,6 +1,6 @@
 // Formatação textual dos eventos da pipeline (CLI e OutputChannel da extensão).
 import type { TraceEntry } from './agent/trace';
-import type { PipelineEvent } from './pipeline';
+import type { PipelineEvent } from './types';
 
 export interface FormatOptions {
   /** Quantos caracteres do "raciocínio" (texto do LLM) mostrar por passo. */
@@ -93,5 +93,12 @@ export function formatEvent(e: PipelineEvent, opts: FormatOptions = {}): string[
     }
     case 'error':
       return ['', `✗ Erro: ${e.message}`];
+    // Eventos por agente: o terminal já mostra o mesmo conteúdo pelos eventos detalhados acima.
+    case 'agent_start':
+    case 'tool_call':
+    case 'agent_end':
+    case 'question':
+    case 'result':
+      return [];
   }
 }
