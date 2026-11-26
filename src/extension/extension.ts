@@ -7,6 +7,8 @@ import { formatEvent } from '../core/progressFormat';
 import { componentName, mutationLine, renderReport, suggestionLines } from '../core/report';
 import type { LLMClient, LLMRequest, PipelineConfig, RunRecord } from '../core/types';
 import { VSCodeAsker } from './vscodeAsker';
+import { PanelAsker, PipelinePanel } from './panel';
+import { eventToMessage, initMessage, progressMessage, statusBarText } from './panelModel';
 import { listCopilotModels, runCopilotEvaluation } from './evaluation';
 import { CLAUDE_CLI_DEFAULT_MODEL, CLAUDE_CLI_FALLBACK_MODEL, ClaudeCliClient } from '../llm/claudeCli';
 import { OpenAIClient } from '../llm/openai';
@@ -16,12 +18,27 @@ const SECRET_KEY = 'reactest.openaiApiKey';
 const DEFAULT_OPENAI_MODEL = 'gpt-4o';
 
 let output: vscode.OutputChannel;
+let statusItem: vscode.StatusBarItem;
+let statusHideTimer: ReturnType<typeof setTimeout> | undefined;
 let running = false;
+
+/** Executa uma atualização de UI; se falhar, a geração continua e o erro vai para o OutputChannel. */
+function ui(fn: () => void): void {
+  try {
+    fn();
+  } catch (err) {
+    output.appendLine(`  ⚠ UI: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   output = vscode.window.createOutputChannel('ReacTest-Agent');
+  statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  statusItem.command = 'reactest.showPanel';
   context.subscriptions.push(
     output,
+    statusItem,
+    vscode.commands.registerCommand('reactest.showPanel', () => PipelinePanel.show((l) => output.appendLine(l))),
     vscode.commands.registerCommand('reactest.generate', (uri?: vscode.Uri) => generate(context, uri)),
     // Componente do editor ativo, com Claude Code headless e cura + elicitação ligadas.
     vscode.commands.registerCommand('reactest.generateClaudeCli', () => generate(context, undefined, { provider: 'claude-cli', heal: true, elicit: true })),
@@ -154,13 +171,35 @@ async function generate(context: vscode.ExtensionContext, uri?: vscode.Uri, over
         output.show(true);
         output.appendLine(`\n══════ ${new Date().toLocaleString('pt-BR')} · ${componentPath} · ${provider}${config.model ? `/${config.model}` : ''} ══════`);
         output.appendLine(`heal=${config.heal} elicit=${config.elicit} verify=${config.verify} maxIterations=${config.maxIterations} maxAgentSteps=${config.maxAgentSteps}`);
+        const log = (line: string) => output.appendLine(line);
+        ui(() => {
+          if (statusHideTimer) clearTimeout(statusHideTimer);
+          PipelinePanel.show(log);
+          PipelinePanel.start(initMessage({ component: componentPath, config }));
+          statusItem.text = '$(sync~spin) ReacTest: iniciando…';
+          statusItem.tooltip = `ReacTest: ${componentPath} (clique para abrir o painel)`;
+          statusItem.show();
+        });
+        token.onCancellationRequested(() => ui(() => { statusItem.text = '$(circle-slash) ReacTest: cancelando…'; }));
         const onEvent = (e: PipelineEvent) => {
           for (const line of formatEvent(e, { reasoningChars: 1200 })) output.appendLine(line);
-          if (e.type === 'stage-start' && e.stage !== 'record') progress.report({ message: e.label });
-          else if (e.type === 'agent-step' && e.entry.tools?.length) progress.report({ message: `${e.label}: ${e.entry.tools.map((t) => t.name).join(', ')}` });
-          else if (e.type === 'iteration') progress.report({ message: `iteração ${e.iteration.iteration}: ${e.iteration.repairStatus}` });
+          ui(() => {
+            const msg = progressMessage(e);
+            if (msg) progress.report({ message: msg });
+            const sb = statusBarText(e);
+            if (sb) {
+              statusItem.text = sb.text;
+              statusItem.tooltip = sb.tooltip;
+            }
+            const pm = eventToMessage(e);
+            if (pm) PipelinePanel.broadcast(pm);
+            if (e.type === 'result') {
+              PipelinePanel.setFiles({ ...(e.testFilePath ? { test: join(workspaceRoot, e.testFilePath) } : {}), trace: e.tracePath });
+            }
+          });
         };
-        return runPipeline({ workspaceRoot, componentPath, config, llm: cancellable(llm, token), ...(config.elicit ? { asker: new VSCodeAsker() } : {}), onEvent });
+        const asker = config.elicit ? new PanelAsker(new VSCodeAsker(), token, log) : undefined;
+        return runPipeline({ workspaceRoot, componentPath, config, llm: cancellable(llm, token), ...(asker ? { asker } : {}), onEvent });
       },
     );
     if (record) await finish(workspaceRoot, record);
@@ -169,6 +208,9 @@ async function generate(context: vscode.ExtensionContext, uri?: vscode.Uri, over
     void vscode.window.showErrorMessage(`ReacTest: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     running = false;
+    ui(() => {
+      statusHideTimer = setTimeout(() => statusItem.hide(), 60_000);
+    });
   }
 }
 

@@ -65,7 +65,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const pathKey = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
-function client(steps: Step[], extra: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {}) {
+function client(steps: Step[], extra: { timeoutMs?: number; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {}) {
   writeFileSync(scriptFile, JSON.stringify(steps));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -74,7 +74,7 @@ function client(steps: Step[], extra: { timeoutMs?: number; env?: NodeJS.Process
     FAKE_CLAUDE_LOG: logFile,
     ...extra.env,
   };
-  return new ClaudeCliClient({ env, ...(extra.timeoutMs ? { timeoutMs: extra.timeoutMs } : {}) });
+  return new ClaudeCliClient({ env, ...(extra.timeoutMs ? { timeoutMs: extra.timeoutMs } : {}), ...(extra.signal ? { signal: extra.signal } : {}) });
 }
 const calls = () =>
   readFileSync(logFile, 'utf8')
@@ -177,6 +177,19 @@ describe('ClaudeCliClient (executável falso no PATH)', () => {
     const t0 = Date.now();
     await expect(c.complete(req)).rejects.toThrow(/não respondeu em 0 s \(timeout\)/);
     expect(Date.now() - t0).toBeLessThan(5_000);
+  });
+
+  it('cancelamento (AbortSignal da extensão): encerra o processo do claude em andamento', async () => {
+    const abort = new AbortController();
+    const c = client([{ result: '{"text":"tarde demais"}', delayMs: 10_000 }], { signal: abort.signal });
+    const t0 = Date.now();
+    setTimeout(() => abort.abort(), 300);
+    await expect(c.complete(req)).rejects.toThrow(/cancelada pelo usuário/);
+    expect(Date.now() - t0).toBeLessThan(5_000);
+    // chamadas seguintes com o mesmo sinal falham na hora, sem iniciar processo
+    const t1 = Date.now();
+    await expect(c.complete(req)).rejects.toThrow(/cancelada pelo usuário/);
+    expect(Date.now() - t1).toBeLessThan(1_000);
   });
 
   it('no máximo 1 processo por vez (fila global entre instâncias)', async () => {

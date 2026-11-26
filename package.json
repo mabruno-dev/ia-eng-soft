@@ -42,6 +42,11 @@
         "command": "reactest.generateClaudeCli",
         "title": "Gerar testes (Claude CLI)",
         "category": "ReacTest"
+      },
+      {
+        "command": "reactest.showPanel",
+        "title": "Mostrar painel da pipeline",
+        "category": "ReacTest"
       }
     ],
     "menus": {

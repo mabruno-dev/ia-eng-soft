@@ -41,3 +41,30 @@ npm run eval -- [--only LoginForm] [--runs 1] [--resume [dir]]
   de cada chamada e o texto bruto das recusas ficam no `.trace.jsonl`. O tool calling é emulado: o prompt traz system, histórico e ferramentas, e o modelo responde só
   em JSON (`{"toolCalls":[...]}` ou `{"text":...}`). Tokens e custo vêm do `usage` do CLI; sem ele, são marcados
   como estimados.
+
+## Interface
+
+Ao rodar **"ReacTest: Gerar testes (Claude CLI)"** ou **"ReacTest: Gerar testes (Agent)"**, a extensão abre o
+painel **ReacTest Pipeline** ao lado do editor (reabra com "ReacTest: Mostrar painel da pipeline"):
+
+![Painel ReacTest Pipeline](docs/interface-demo.gif)
+
+> _Placeholder: grave o GIF/print da demo e salve em `docs/interface-demo.gif`._
+
+- **Cabeçalho:** componente, provedor/modelo, flags (cura, elicitação, Verificador) e barra de progresso (agente atual / 6).
+- **Linha do tempo dos 6 agentes** (Contexto, Elicitação, Gerador, Executor, Reparador, Verificador), cada um com o
+  selo "LLM + ferramentas" e estado: aguardando, executando (spinner), concluído com o tempo, erro ou ignorado. Dentro
+  de cada agente, a lista ao vivo das ferramentas chamadas (nome, resumo, ✓/✗).
+- **Elicitação:** a pergunta em destaque, o "por quê" em texto menor, caixa de resposta, botões "Responder"/"Pular"
+  e o contador "Pergunta 2 de 5". Se o painel não estiver visível, a pergunta vai para a caixa de entrada do VS Code.
+- **Cura:** um cartão por iteração Executor ⇄ Reparador com a categoria da falha e o resumo.
+- **Resultado:** selo de status (PASSED verde; SUSPECTED_COMPONENT_BUG amarelo, "o teste NÃO foi alterado";
+  FAILED/ERROR vermelho), métricas (iterações, cobertura, mutação mortos/total, tokens, tempo, custo quando o
+  provedor informa), sugestões do Verificador e os botões "Abrir teste" e "Abrir trace".
+- **Barra de status** ("ReacTest: Gerador…", clique abre o painel) e notificação de progresso cancelável
+  ("Agente 3/6 · Gerador"). Cancelar encerra o processo do `claude` em andamento.
+
+O painel é só observação: consome os eventos tipados da pipeline (`PipelineEvent` em `src/core/types.ts`:
+`agent_start`, `tool_call`, `agent_end`, `question`, `iteration`, `result`), os mesmos que o CLI recebe. Os textos
+passam por `redactSecrets` antes de chegar ao webview (sem chaves ou tokens), o HTML usa CSP com nonce e só cores do
+tema do VS Code (claro/escuro). Se a UI falhar, a geração continua e o erro vai para o OutputChannel.
