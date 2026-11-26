@@ -1,0 +1,87 @@
+{
+  "component": "src/components/ThemeToggle.tsx",
+  "config": "C2",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T033630556Z-87c6b5",
+    "component": "src/components/ThemeToggle.tsx",
+    "config": {
+      "heal": true,
+      "elicit": true,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 17,
+      "inputTokens": 88052,
+      "outputTokens": 8544
+    },
+    "agents": {
+      "context": {
+        "steps": 5,
+        "toolCalls": 5
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 3,
+        "toolCalls": 4
+      },
+      "executor": {
+        "steps": 2,
+        "toolCalls": 1
+      },
+      "repairer": {
+        "steps": 6,
+        "toolCalls": 4
+      }
+    },
+    "timings": {
+      "totalMs": 72566.19340000005,
+      "perAgentMs": {
+        "context": 5498.406799999997,
+        "elicitation": 0.005999999993946403,
+        "generator": 16322.806500000006,
+        "executor": 6746.407399999967,
+        "repairer": 43988.067500000005,
+        "verifier": 0.013300000107847154
+      }
+    },
+    "status": "FAILED",
+    "iterations": 1,
+    "generated": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { ThemeToggle } from './ThemeToggle';\nimport { useThemeStore } from '../state/themeStore';\n\njest.mock('../state/themeStore');\nconst mockedUseThemeStore = jest.mocked(useThemeStore);\n\ndescribe('ThemeToggle', () => {\n  beforeEach(() => {\n    mockedUseThemeStore.mockReset();\n  });\n\n  it('renderiza corretamente com tema claro', () => {\n    mockedUseThemeStore.mockReturnValue({ theme: 'light', toggle: jest.fn() });\n    render(<ThemeToggle />);\n\n    const button = screen.getByRole('button', { name: 'Tema claro' });\n    expect(button).toBeInTheDocument();\n    expect(button).toHaveAttribute('aria-pressed', 'false');\n  });\n\n  it('renderiza corretamente com tema escuro', () => {\n    mockedUseThemeStore.mockReturnValue({ theme: 'dark', toggle: jest.fn() });\n    render(<ThemeToggle />);\n\n    const button = screen.getByRole('button', { name: 'Tema escuro' });\n    expect(button).toBeInTheDocument();\n    expect(button).toHaveAttribute('aria-pressed', 'true');\n  });\n\n  it('alterna para tema escuro ao clicar no botão', async () => {\n    const toggleMock = jest.fn();\n    mockedUseThemeStore.mockReturnValue({ theme: 'light', toggle: toggleMock });\n    const user = userEvent.setup();\n    render(<ThemeToggle />);\n\n    const button = screen.getByRole('button', { name: 'Tema claro' });\n    await user.click(button);\n\n    expect(toggleMock).toHaveBeenCalled();\n  });\n\n  it('alterna para tema claro ao clicar no botão', async () => {\n    const toggleMock = jest.fn();\n    mockedUseThemeStore.mockReturnValue({ theme: 'dark', toggle: toggleMock });\n    const user = userEvent.setup();\n    render(<ThemeToggle />);\n\n    const button = screen.getByRole('button', { name: 'Tema escuro' });\n    await user.click(button);\n\n    expect(toggleMock).toHaveBeenCalled();\n  });\n\n  it('atualiza atributo data-theme no documento', () => {\n    const { rerender } = render(<ThemeToggle />);\n\n    mockedUseThemeStore.mockReturnValue({ theme: 'light', toggle: jest.fn() });\n    rerender(<ThemeToggle />);\n    expect(document.documentElement).toHaveAttribute('data-theme', 'light');\n\n    mockedUseThemeStore.mockReturnValue({ theme: 'dark', toggle: jest.fn() });\n    rerender(<ThemeToggle />);\n    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');\n  });\n});\n",
+      "lines": 68
+    },
+    "final": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { ThemeToggle } from './ThemeToggle';\nimport { useThemeStore } from '../state/themeStore';\n\njest.mock('../state/themeStore');\nconst mockedUseThemeStore = jest.mocked(useThemeStore);\n\ndescribe('ThemeToggle', () => {\n  beforeEach(() => {\n    mockedUseThemeStore.mockReset();\n  });\n\n  it('renderiza corretamente com tema claro', () => {\n    mockedUseThemeStore.mockReturnValue({ theme: 'light', toggle: jest.fn() });\n    render(<ThemeToggle />);\n\n    const button = screen.getByRole('button', { name: 'Tema claro' });\n    expect(button).toBeInTheDocument();\n    expect(button).toHaveAttribute('aria-pressed', 'false');\n  });\n\n  it('renderiza corretamente com tema escuro', () => {\n    mockedUseThemeStore.mockReturnValue({ theme: 'dark', toggle: jest.fn() });\n    render(<ThemeToggle />);\n\n    const button = screen.getByRole('button', { name: 'Tema escuro' });\n    expect(button).toBeInTheDocument();\n    expect(button).toHaveAttribute('aria-pressed', 'true');\n  });\n\n  it('alterna para tema escuro ao clicar no botão', async () => {\n    const toggleMock = jest.fn();\n    mockedUseThemeStore.mockReturnValue({ theme: 'light', toggle: toggleMock });\n    const user = userEvent.setup();\n    render(<ThemeToggle />);\n\n    const button = screen.getByRole('button', { name: 'Tema claro' });\n    await user.click(button);\n\n    expect(toggleMock).toHaveBeenCalled();\n  });\n\n  it('alterna para tema claro ao clicar no botão', async () => {\n    const toggleMock = jest.fn();\n    mockedUseThemeStore.mockReturnValue({ theme: 'dark', toggle: toggleMock });\n    const user = userEvent.setup();\n    render(<ThemeToggle />);\n\n    const button = screen.getByRole('button', { name: 'Tema escuro' });\n    await user.click(button);\n\n    expect(toggleMock).toHaveBeenCalled();\n  });\n\n  it('atualiza atributo data-theme no documento', () => {\n    const { rerender } = render(<ThemeToggle />);\n\n    mockedUseThemeStore.mockReturnValue({ theme: 'light', toggle: jest.fn() });\n    rerender(<ThemeToggle />);\n    expect(document.documentElement).toHaveAttribute('data-theme', 'light');\n\n    mockedUseThemeStore.mockReturnValue({ theme: 'dark', toggle: jest.fn() });\n    rerender(<ThemeToggle />);\n    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');\n  });\n});\n",
+      "lines": 68
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 81.81,
+      "branches": 50,
+      "functions": 50,
+      "lines": 100
+    },
+    "rejectedRepairs": 0,
+    "alignedToBehavior": 0,
+    "testFilePath": "src/components/ThemeToggle.test.tsx",
+    "history": [
+      {
+        "iteration": 1,
+        "category": "ASSERTION",
+        "summary": "Os testes falharam porque os elementos esperados não foram encontrados ou os atributos não correspondiam aos valores esperados. Por exemplo, o teste 'ThemeToggle renderiza corretamente com tema claro' não encontrou um botão com o nome 'Tema claro', mas encontrou um botão com o nome 'Ativar tema claro'. Além disso, o teste 'ThemeToggle atualiza atributo data-theme no documento' esperava o atributo 'data-theme' com valor 'light', mas recebeu '[object Object]'.",
+        "repairStatus": "GAVE_UP",
+        "reasoning": "Os testes falham consistentemente devido a um problema com o mock do estado do tema, que não retorna corretamente os valores esperados. A configuração do mock parece não estar alinhada com o comportamento esperado do componente, mas não há evidência explícita de um defeito no componente em si.",
+        "rejectedRepairs": 0,
+        "alignedToBehavior": false
+      }
+    ]
+  }
+}

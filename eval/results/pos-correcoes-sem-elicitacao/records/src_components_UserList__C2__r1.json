@@ -1,0 +1,96 @@
+{
+  "component": "src/components/UserList.tsx",
+  "config": "C2",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T033202378Z-82012a",
+    "component": "src/components/UserList.tsx",
+    "config": {
+      "heal": true,
+      "elicit": true,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 20,
+      "inputTokens": 60832,
+      "outputTokens": 9077
+    },
+    "agents": {
+      "context": {
+        "steps": 5,
+        "toolCalls": 7
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 3,
+        "toolCalls": 5
+      },
+      "executor": {
+        "steps": 6,
+        "toolCalls": 3
+      },
+      "repairer": {
+        "steps": 5,
+        "toolCalls": 4
+      }
+    },
+    "timings": {
+      "totalMs": 78016.9834,
+      "perAgentMs": {
+        "context": 6359.5240999999805,
+        "elicitation": 0.004499999980907887,
+        "generator": 20673.160999999993,
+        "executor": 21860.76780000003,
+        "repairer": 29108.80139999994,
+        "verifier": 0.013100000040140003
+      }
+    },
+    "status": "PASSED",
+    "iterations": 2,
+    "generated": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { UserList } from './UserList';\nimport { fetchUsers } from '../services/userApi';\n\njest.mock('../services/userApi');\nconst mockedFetchUsers = jest.mocked(fetchUsers);\n\ndescribe('UserList', () => {\n  beforeEach(() => {\n    mockedFetchUsers.mockReset();\n  });\n\n  it('renderiza estado inicial de carregamento', () => {\n    render(<UserList />);\n    expect(screen.getByRole('status')).toHaveTextContent('Carregando usuários...');\n  });\n\n  it('exibe mensagem de erro ao falhar no carregamento', async () => {\n    mockedFetchUsers.mockRejectedValue(new Error('Erro de rede'));\n    render(<UserList />);\n    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao carregar usuários: Erro de rede');\n  });\n\n  it('exibe mensagem quando não há usuários', async () => {\n    mockedFetchUsers.mockResolvedValue([]);\n    render(<UserList />);\n    expect(await screen.findByText('Nenhum usuário cadastrado.')).toBeInTheDocument();\n  });\n\n  it('renderiza lista de usuários', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n    const list = await screen.findByRole('list', { name: 'Usuários' });\n    expect(list).toBeInTheDocument();\n    expect(screen.getByText('Alice')).toBeInTheDocument();\n    expect(screen.getByText('Bob')).toBeInTheDocument();\n  });\n\n  it('filtra usuários com base na consulta', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n\n    const input = screen.getByLabelText('Filtrar');\n    await userEvent.type(input, 'Alice');\n\n    expect(screen.getByText('Alice')).toBeInTheDocument();\n    expect(screen.queryByText('Bob')).not.toBeInTheDocument();\n  });\n\n  it('exibe mensagem quando nenhum usuário é encontrado na busca', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n\n    const input = screen.getByLabelText('Filtrar');\n    await userEvent.type(input, 'Charlie');\n\n    expect(screen.getByText('Nenhum usuário encontrado para “Charlie”.')).toBeInTheDocument();\n  });\n});\n",
+      "lines": 73
+    },
+    "final": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { UserList } from './UserList';\nimport { fetchUsers } from '../services/userApi';\n\njest.mock('../services/userApi');\nconst mockedFetchUsers = jest.mocked(fetchUsers);\n\ndescribe('UserList', () => {\n  beforeEach(() => {\n    mockedFetchUsers.mockReset();\n  });\n\n  it('renderiza estado inicial de carregamento', () => {\n    // Configura o mock para retornar uma Promise que nunca resolve\n    mockedFetchUsers.mockImplementation(() => new Promise(() => {}));\n    render(<UserList />);\n    expect(screen.getByRole('status')).toHaveTextContent('Carregando usuários...');\n  });\n\n  it('exibe mensagem de erro ao falhar no carregamento', async () => {\n    mockedFetchUsers.mockRejectedValue(new Error('Erro de rede'));\n    render(<UserList />);\n    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao carregar usuários: Erro de rede');\n  });\n\n  it('exibe mensagem quando não há usuários', async () => {\n    mockedFetchUsers.mockResolvedValue([]);\n    render(<UserList />);\n    expect(await screen.findByText('Nenhum usuário cadastrado.')).toBeInTheDocument();\n  });\n\n  it('renderiza lista de usuários', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n    const list = await screen.findByRole('list', { name: 'Usuários' });\n    expect(list).toBeInTheDocument();\n    expect(screen.getByText('Alice')).toBeInTheDocument();\n    expect(screen.getByText('Bob')).toBeInTheDocument();\n  });\n\n  it('filtra usuários com base na consulta', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n\n    const input = await screen.findByLabelText('Filtrar');\n    await userEvent.type(input, 'Alice');\n\n    expect(screen.getByText('Alice')).toBeInTheDocument();\n    expect(screen.queryByText('Bob')).not.toBeInTheDocument();\n  });\n\n  it('exibe mensagem quando nenhum usuário é encontrado na busca', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n\n    const input = await screen.findByLabelText('Filtrar');\n    await userEvent.type(input, 'Charlie');\n\n    expect(screen.getByText('Nenhum usuário encontrado para “Charlie”.')).toBeInTheDocument();\n  });\n});\n",
+      "lines": 75
+    },
+    "modificationRate": 0.0548,
+    "coverage": {
+      "statements": 100,
+      "branches": 85,
+      "functions": 100,
+      "lines": 100
+    },
+    "rejectedRepairs": 0,
+    "alignedToBehavior": 2,
+    "testFilePath": "src/components/UserList.test.tsx",
+    "history": [
+      {
+        "iteration": 1,
+        "category": "MOCK",
+        "summary": "O teste 'UserList renderiza estado inicial de carregamento' falha devido a um TypeError ao tentar acessar 'then' de 'fetchUsers', indicando que 'fetchUsers' não está mockado corretamente. Além disso, os testes 'UserList filtra usuários com base na consulta' e 'UserList exibe mensagem quando nenhum usuário é encontrado na busca' falham por não encontrar um label com o texto 'Filtrar', sugerindo que o componente pode não estar renderizando conforme esperado ou que o seletor está incorreto.",
+        "repairStatus": "REPAIRED",
+        "reasoning": "O teste falhava devido a um mock incorreto de 'fetchUsers' e ao uso inadequado de 'getByLabelText' para um elemento que pode não estar imediatamente disponível. Corrigi o mock e substituí 'getByLabelText' por 'findByLabelText' para aguardar a renderização completa do componente.",
+        "rejectedRepairs": 0,
+        "alignedToBehavior": true
+      },
+      {
+        "iteration": 2,
+        "category": "MOCK",
+        "summary": "O teste 'UserList renderiza estado inicial de carregamento' falhou devido a um TypeError: 'Cannot read properties of undefined (reading 'then')'. Isso sugere que a função fetchUsers não está sendo mockada corretamente, resultando em undefined ao invés de uma Promise.",
+        "repairStatus": "REPAIRED",
+        "reasoning": "O erro ocorreu porque a função fetchUsers não estava sendo mockada corretamente, resultando em undefined. Ajustei o teste para garantir que fetchUsers seja mockada para retornar uma Promise antes de renderizar o componente, corrigindo o problema.",
+        "rejectedRepairs": 0,
+        "alignedToBehavior": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+# Versiona só as avaliações válidas (summary.md + RunRecords .json) e este README.
+# Traces (.trace.jsonl), runs.csv, backups e execuções inválidas ficam só locais.
+/*
+!/.gitignore
+!/README.md
+!/baseline-antes-correcoes/
+!/pos-correcoes-sem-elicitacao/
+/baseline-antes-correcoes/*
+/pos-correcoes-sem-elicitacao/*
+!/baseline-antes-correcoes/summary.md
+!/pos-correcoes-sem-elicitacao/summary.md
+!/baseline-antes-correcoes/records/
+!/pos-correcoes-sem-elicitacao/records/
+*.trace.jsonl

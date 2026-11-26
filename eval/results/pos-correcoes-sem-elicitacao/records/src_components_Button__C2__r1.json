@@ -1,0 +1,72 @@
+{
+  "component": "src/components/Button.tsx",
+  "config": "C2",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T032850760Z-5944f8",
+    "component": "src/components/Button.tsx",
+    "config": {
+      "heal": true,
+      "elicit": true,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 9,
+      "inputTokens": 20011,
+      "outputTokens": 3115
+    },
+    "agents": {
+      "context": {
+        "steps": 4,
+        "toolCalls": 3
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 2,
+        "toolCalls": 2
+      },
+      "executor": {
+        "steps": 2,
+        "toolCalls": 1
+      }
+    },
+    "timings": {
+      "totalMs": 29670.9447,
+      "perAgentMs": {
+        "context": 4977.001299999996,
+        "elicitation": 0.07729999999719439,
+        "generator": 16281.317000000003,
+        "executor": 8405.0144,
+        "verifier": 0.003299999996670522
+      }
+    },
+    "status": "PASSED",
+    "iterations": 0,
+    "generated": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { Button } from './Button';\n\ndescribe('Button', () => {\n  it('renderiza botão com texto e variante padrão', () => {\n    render(<Button>Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toHaveClass('btn-primary');\n    expect(button).toHaveTextContent('Click me');\n  });\n\n  it('renderiza botão com variante secundária', () => {\n    render(<Button variant=\"secondary\">Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toHaveClass('btn-secondary');\n  });\n\n  it('renderiza botão desabilitado', () => {\n    render(<Button disabled>Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toBeDisabled();\n    expect(button).toHaveAttribute('aria-disabled', 'true');\n  });\n\n  it('aciona onClick quando clicado', async () => {\n    const onClick = jest.fn();\n    const user = userEvent.setup();\n    render(<Button onClick={onClick}>Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    await user.click(button);\n    expect(onClick).toHaveBeenCalledTimes(1);\n  });\n\n  it('não aciona onClick quando desabilitado', async () => {\n    const onClick = jest.fn();\n    const user = userEvent.setup();\n    render(<Button disabled onClick={onClick}>Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    await user.click(button);\n    expect(onClick).not.toHaveBeenCalled();\n  });\n\n  it('renderiza botão com tipo submit', () => {\n    render(<Button type=\"submit\">Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toHaveAttribute('type', 'submit');\n  });\n\n  it('renderiza botão com tipo reset', () => {\n    render(<Button type=\"reset\">Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toHaveAttribute('type', 'reset');\n  });\n});\n",
+      "lines": 56
+    },
+    "final": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { Button } from './Button';\n\ndescribe('Button', () => {\n  it('renderiza botão com texto e variante padrão', () => {\n    render(<Button>Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toHaveClass('btn-primary');\n    expect(button).toHaveTextContent('Click me');\n  });\n\n  it('renderiza botão com variante secundária', () => {\n    render(<Button variant=\"secondary\">Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toHaveClass('btn-secondary');\n  });\n\n  it('renderiza botão desabilitado', () => {\n    render(<Button disabled>Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toBeDisabled();\n    expect(button).toHaveAttribute('aria-disabled', 'true');\n  });\n\n  it('aciona onClick quando clicado', async () => {\n    const onClick = jest.fn();\n    const user = userEvent.setup();\n    render(<Button onClick={onClick}>Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    await user.click(button);\n    expect(onClick).toHaveBeenCalledTimes(1);\n  });\n\n  it('não aciona onClick quando desabilitado', async () => {\n    const onClick = jest.fn();\n    const user = userEvent.setup();\n    render(<Button disabled onClick={onClick}>Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    await user.click(button);\n    expect(onClick).not.toHaveBeenCalled();\n  });\n\n  it('renderiza botão com tipo submit', () => {\n    render(<Button type=\"submit\">Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toHaveAttribute('type', 'submit');\n  });\n\n  it('renderiza botão com tipo reset', () => {\n    render(<Button type=\"reset\">Click me</Button>);\n    const button = screen.getByRole('button', { name: 'Click me' });\n    expect(button).toHaveAttribute('type', 'reset');\n  });\n});\n",
+      "lines": 56
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "rejectedRepairs": 0,
+    "alignedToBehavior": 0,
+    "testFilePath": "src/components/Button.test.tsx",
+    "history": []
+  }
+}

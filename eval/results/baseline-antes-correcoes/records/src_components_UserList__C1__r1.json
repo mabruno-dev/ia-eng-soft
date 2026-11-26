@@ -1,0 +1,70 @@
+{
+  "component": "src/components/UserList.tsx",
+  "config": "C1",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T030741903Z-5ff292",
+    "component": "src/components/UserList.tsx",
+    "config": {
+      "heal": false,
+      "elicit": false,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 12,
+      "inputTokens": 30345,
+      "outputTokens": 2890
+    },
+    "agents": {
+      "context": {
+        "steps": 6,
+        "toolCalls": 7
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 3,
+        "toolCalls": 3
+      },
+      "executor": {
+        "steps": 2,
+        "toolCalls": 1
+      }
+    },
+    "timings": {
+      "totalMs": 27439.297299999977,
+      "perAgentMs": {
+        "context": 6491.078299999994,
+        "generator": 14005.406199999969,
+        "executor": 6941.502099999983,
+        "verifier": 0.0023999999975785613
+      }
+    },
+    "status": "FAILED",
+    "iterations": 0,
+    "generated": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { UserList } from './UserList';\nimport { fetchUsers } from '../services/userApi';\n\njest.mock('../services/userApi');\nconst mockedFetchUsers = jest.mocked(fetchUsers);\n\ndescribe('UserList', () => {\n  beforeEach(() => {\n    mockedFetchUsers.mockReset();\n  });\n\n  it('renderiza estado de carregamento inicialmente', () => {\n    render(<UserList />);\n    expect(screen.getByRole('status')).toHaveTextContent('Carregando usuários...');\n  });\n\n  it('renderiza mensagem de erro ao falhar ao carregar usuários', async () => {\n    mockedFetchUsers.mockRejectedValue(new Error('Erro de rede'));\n    render(<UserList />);\n    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao carregar usuários: Erro de rede');\n  });\n\n  it('renderiza mensagem quando não há usuários cadastrados', async () => {\n    mockedFetchUsers.mockResolvedValue([]);\n    render(<UserList />);\n    expect(await screen.findByText('Nenhum usuário cadastrado.')).toBeInTheDocument();\n  });\n\n  it('renderiza lista de usuários quando carregamento é bem-sucedido', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n    const listItems = await screen.findAllByRole('listitem');\n    expect(listItems).toHaveLength(users.length);\n    expect(screen.getByText('Alice')).toBeInTheDocument();\n    expect(screen.getByText('Bob')).toBeInTheDocument();\n  });\n\n  it('filtra usuários com base na consulta de pesquisa', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n    await userEvent.type(screen.getByLabelText('Filtrar'), 'Alice');\n    expect(screen.getByText('Alice')).toBeInTheDocument();\n    expect(screen.queryByText('Bob')).not.toBeInTheDocument();\n  });\n\n  it('renderiza mensagem quando nenhum usuário corresponde à consulta', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n    await userEvent.type(screen.getByLabelText('Filtrar'), 'Charlie');\n    expect(screen.getByText('Nenhum usuário encontrado para “Charlie”.')).toBeInTheDocument();\n  });\n});\n",
+      "lines": 67
+    },
+    "final": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { UserList } from './UserList';\nimport { fetchUsers } from '../services/userApi';\n\njest.mock('../services/userApi');\nconst mockedFetchUsers = jest.mocked(fetchUsers);\n\ndescribe('UserList', () => {\n  beforeEach(() => {\n    mockedFetchUsers.mockReset();\n  });\n\n  it('renderiza estado de carregamento inicialmente', () => {\n    render(<UserList />);\n    expect(screen.getByRole('status')).toHaveTextContent('Carregando usuários...');\n  });\n\n  it('renderiza mensagem de erro ao falhar ao carregar usuários', async () => {\n    mockedFetchUsers.mockRejectedValue(new Error('Erro de rede'));\n    render(<UserList />);\n    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao carregar usuários: Erro de rede');\n  });\n\n  it('renderiza mensagem quando não há usuários cadastrados', async () => {\n    mockedFetchUsers.mockResolvedValue([]);\n    render(<UserList />);\n    expect(await screen.findByText('Nenhum usuário cadastrado.')).toBeInTheDocument();\n  });\n\n  it('renderiza lista de usuários quando carregamento é bem-sucedido', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n    const listItems = await screen.findAllByRole('listitem');\n    expect(listItems).toHaveLength(users.length);\n    expect(screen.getByText('Alice')).toBeInTheDocument();\n    expect(screen.getByText('Bob')).toBeInTheDocument();\n  });\n\n  it('filtra usuários com base na consulta de pesquisa', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n    await userEvent.type(screen.getByLabelText('Filtrar'), 'Alice');\n    expect(screen.getByText('Alice')).toBeInTheDocument();\n    expect(screen.queryByText('Bob')).not.toBeInTheDocument();\n  });\n\n  it('renderiza mensagem quando nenhum usuário corresponde à consulta', async () => {\n    const users = [\n      { id: 1, name: 'Alice', email: 'alice@example.com' },\n      { id: 2, name: 'Bob', email: 'bob@example.com' },\n    ];\n    mockedFetchUsers.mockResolvedValue(users);\n    render(<UserList />);\n    await userEvent.type(screen.getByLabelText('Filtrar'), 'Charlie');\n    expect(screen.getByText('Nenhum usuário encontrado para “Charlie”.')).toBeInTheDocument();\n  });\n});\n",
+      "lines": 67
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 90.32,
+      "branches": 65,
+      "functions": 77.77,
+      "lines": 91.66
+    },
+    "rejectedRepairs": 0,
+    "testFilePath": "src/components/UserList.test.tsx",
+    "history": []
+  }
+}

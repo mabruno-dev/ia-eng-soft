@@ -1,0 +1,70 @@
+{
+  "component": "src/components/LoginForm.tsx",
+  "config": "C1",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T030447538Z-3d4ec4",
+    "component": "src/components/LoginForm.tsx",
+    "config": {
+      "heal": false,
+      "elicit": false,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 12,
+      "inputTokens": 33463,
+      "outputTokens": 3944
+    },
+    "agents": {
+      "context": {
+        "steps": 6,
+        "toolCalls": 8
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 3,
+        "toolCalls": 3
+      },
+      "executor": {
+        "steps": 2,
+        "toolCalls": 1
+      }
+    },
+    "timings": {
+      "totalMs": 35211.59269999998,
+      "perAgentMs": {
+        "context": 6838.312000000005,
+        "generator": 19940.069300000003,
+        "executor": 8431.78959999999,
+        "verifier": 0.0062000000034458935
+      }
+    },
+    "status": "FAILED",
+    "iterations": 0,
+    "generated": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { LoginForm } from './LoginForm';\nimport { login } from '../services/authApi';\n\njest.mock('../services/authApi');\nconst mockedLogin = jest.mocked(login);\n\ndescribe('LoginForm', () => {\n  beforeEach(() => {\n    mockedLogin.mockReset();\n  });\n\n  it('renderiza o formulário de login inicialmente', () => {\n    render(<LoginForm />);\n\n    expect(screen.getByLabelText('E-mail')).toHaveValue('');\n    expect(screen.getByLabelText('Senha')).toHaveValue('');\n    expect(screen.getByRole('button', { name: 'Entrar' })).toBeEnabled();\n  });\n\n  it('mostra erro ao submeter com campos vazios', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert', { name: 'Informe o e-mail.' })).toBeInTheDocument();\n    expect(screen.getByRole('alert', { name: 'Informe a senha.' })).toBeInTheDocument();\n  });\n\n  it('mostra erro de e-mail inválido', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'invalid-email');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert', { name: 'E-mail inválido.' })).toBeInTheDocument();\n  });\n\n  it('mostra erro de senha curta', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'short');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert', { name: `A senha deve ter pelo menos 8 caracteres.` })).toBeInTheDocument();\n  });\n\n  it('submete com sucesso e chama onSuccess', async () => {\n    const user = userEvent.setup();\n    const onSuccess = jest.fn();\n    mockedLogin.mockResolvedValue({ token: 'token', user: { id: 1, name: 'John Doe' } });\n    render(<LoginForm onSuccess={onSuccess} />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'validpassword');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('status')).toHaveTextContent('Bem-vindo, John Doe!');\n    expect(onSuccess).toHaveBeenCalledWith({ token: 'token', user: { id: 1, name: 'John Doe' } });\n  });\n\n  it('mostra mensagem de erro em falha de login', async () => {\n    const user = userEvent.setup();\n    mockedLogin.mockRejectedValue(new Error('Falha no login'));\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'validpassword');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('alert')).toHaveTextContent('Falha no login');\n  });\n\n  it('desabilita botão durante carregamento', async () => {\n    const user = userEvent.setup();\n    let resolveLogin: () => void;\n    mockedLogin.mockImplementation(() => new Promise((resolve) => (resolveLogin = resolve)));\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'validpassword');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('button', { name: 'Entrando...' })).toBeDisabled();\n    resolveLogin!();\n  });\n\n  it('renderiza mensagem de boas-vindas após sucesso', async () => {\n    const user = userEvent.setup();\n    mockedLogin.mockResolvedValue({ token: 'token', user: { id: 1, name: 'John Doe' } });\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'validpassword');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('status')).toHaveTextContent('Bem-vindo, John Doe!');\n  });\n});\n",
+      "lines": 105
+    },
+    "final": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { LoginForm } from './LoginForm';\nimport { login } from '../services/authApi';\n\njest.mock('../services/authApi');\nconst mockedLogin = jest.mocked(login);\n\ndescribe('LoginForm', () => {\n  beforeEach(() => {\n    mockedLogin.mockReset();\n  });\n\n  it('renderiza o formulário de login inicialmente', () => {\n    render(<LoginForm />);\n\n    expect(screen.getByLabelText('E-mail')).toHaveValue('');\n    expect(screen.getByLabelText('Senha')).toHaveValue('');\n    expect(screen.getByRole('button', { name: 'Entrar' })).toBeEnabled();\n  });\n\n  it('mostra erro ao submeter com campos vazios', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert', { name: 'Informe o e-mail.' })).toBeInTheDocument();\n    expect(screen.getByRole('alert', { name: 'Informe a senha.' })).toBeInTheDocument();\n  });\n\n  it('mostra erro de e-mail inválido', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'invalid-email');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert', { name: 'E-mail inválido.' })).toBeInTheDocument();\n  });\n\n  it('mostra erro de senha curta', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'short');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert', { name: `A senha deve ter pelo menos 8 caracteres.` })).toBeInTheDocument();\n  });\n\n  it('submete com sucesso e chama onSuccess', async () => {\n    const user = userEvent.setup();\n    const onSuccess = jest.fn();\n    mockedLogin.mockResolvedValue({ token: 'token', user: { id: 1, name: 'John Doe' } });\n    render(<LoginForm onSuccess={onSuccess} />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'validpassword');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('status')).toHaveTextContent('Bem-vindo, John Doe!');\n    expect(onSuccess).toHaveBeenCalledWith({ token: 'token', user: { id: 1, name: 'John Doe' } });\n  });\n\n  it('mostra mensagem de erro em falha de login', async () => {\n    const user = userEvent.setup();\n    mockedLogin.mockRejectedValue(new Error('Falha no login'));\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'validpassword');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('alert')).toHaveTextContent('Falha no login');\n  });\n\n  it('desabilita botão durante carregamento', async () => {\n    const user = userEvent.setup();\n    let resolveLogin: () => void;\n    mockedLogin.mockImplementation(() => new Promise((resolve) => (resolveLogin = resolve)));\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'validpassword');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('button', { name: 'Entrando...' })).toBeDisabled();\n    resolveLogin!();\n  });\n\n  it('renderiza mensagem de boas-vindas após sucesso', async () => {\n    const user = userEvent.setup();\n    mockedLogin.mockResolvedValue({ token: 'token', user: { id: 1, name: 'John Doe' } });\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'validpassword');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('status')).toHaveTextContent('Bem-vindo, John Doe!');\n  });\n});\n",
+      "lines": 105
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 0,
+      "branches": 0,
+      "functions": 0,
+      "lines": 0
+    },
+    "rejectedRepairs": 0,
+    "testFilePath": "src/components/LoginForm.test.tsx",
+    "history": []
+  }
+}

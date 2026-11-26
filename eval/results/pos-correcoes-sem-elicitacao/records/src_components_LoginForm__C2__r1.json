@@ -1,0 +1,67 @@
+{
+  "component": "src/components/LoginForm.tsx",
+  "config": "C2",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T033026546Z-1494e5",
+    "component": "src/components/LoginForm.tsx",
+    "config": {
+      "heal": true,
+      "elicit": true,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 12,
+      "inputTokens": 72415,
+      "outputTokens": 9826
+    },
+    "agents": {
+      "context": {
+        "steps": 5,
+        "toolCalls": 8
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 6,
+        "toolCalls": 4
+      }
+    },
+    "timings": {
+      "totalMs": 58776.9075,
+      "perAgentMs": {
+        "context": 5329.383400000006,
+        "elicitation": 0.006599999993341044,
+        "generator": 53439.63460000002
+      }
+    },
+    "status": "ERROR",
+    "iterations": 0,
+    "generated": {
+      "code": "",
+      "lines": 0
+    },
+    "final": {
+      "code": "",
+      "lines": 0
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 0,
+      "branches": 0,
+      "functions": 0,
+      "lines": 0
+    },
+    "rejectedRepairs": 0,
+    "alignedToBehavior": 0,
+    "testFilePath": "src/components/LoginForm.test.tsx",
+    "history": [],
+    "error": "AgentOutputError: Agente \"generator.code\" produziu uma resposta final inválida mesmo após a tentativa de reparo: ✖ chame typecheck_test com o código final EXATO que vai entregar (e corrija os erros) antes de responder\n  → at code"
+  }
+}

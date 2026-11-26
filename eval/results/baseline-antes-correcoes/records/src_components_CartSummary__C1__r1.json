@@ -1,0 +1,70 @@
+{
+  "component": "src/components/CartSummary.tsx",
+  "config": "C1",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T030938661Z-47b1d9",
+    "component": "src/components/CartSummary.tsx",
+    "config": {
+      "heal": false,
+      "elicit": false,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 11,
+      "inputTokens": 35678,
+      "outputTokens": 4206
+    },
+    "agents": {
+      "context": {
+        "steps": 5,
+        "toolCalls": 11
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 3,
+        "toolCalls": 5
+      },
+      "executor": {
+        "steps": 2,
+        "toolCalls": 1
+      }
+    },
+    "timings": {
+      "totalMs": 39981.58439999999,
+      "perAgentMs": {
+        "context": 6179.649700000009,
+        "generator": 17684.06039999996,
+        "executor": 16023.154600000009,
+        "verifier": 0.0032999999821186066
+      }
+    },
+    "status": "FAILED",
+    "iterations": 0,
+    "generated": {
+      "code": "import { render, screen, within } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { CartSummary } from './CartSummary';\nimport { CartProvider } from '../state/CartContext';\nimport { cartSubtotal, cartDiscount, cartTotal } from '../state/cartReducer';\nimport { formatCurrency } from '../utils/format';\n\nfunction renderWithProvider(ui, { initialState } = {}) {\n  return render(<CartProvider initialState={initialState}>{ui}</CartProvider>);\n}\n\nconst initialCartState = {\n  items: [\n    { id: 1, name: 'Produto A', price: 100, quantity: 2 },\n    { id: 2, name: 'Produto B', price: 50, quantity: 1 },\n  ],\n  couponCode: null,\n};\n\nconst emptyCartState = {\n  items: [],\n  couponCode: null,\n};\n\ndescribe('CartSummary', () => {\n  it('renderiza carrinho vazio', () => {\n    renderWithProvider(<CartSummary />, { initialState: emptyCartState });\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n  });\n\n  it('renderiza carrinho com itens', () => {\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    initialCartState.items.forEach((item) => {\n      expect(screen.getByText(`${item.name} × ${item.quantity}`)).toBeInTheDocument();\n      expect(screen.getByText(formatCurrency(item.price * item.quantity))).toBeInTheDocument();\n    });\n  });\n\n  it('aplica cupom válido', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'PROMO10');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByText('Cupom PROMO10 aplicado.')).toBeInTheDocument();\n  });\n\n  it('tenta aplicar cupom inválido', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'INVALIDO');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Cupom inválido.');\n  });\n\n  it('remove item do carrinho', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    await user.click(screen.getByRole('button', { name: 'Remover Produto A' }));\n\n    expect(screen.queryByText('Produto A × 2')).not.toBeInTheDocument();\n  });\n\n  it('remove cupom aplicado', async () => {\n    const user = userEvent.setup();\n    const stateWithCoupon = { ...initialCartState, couponCode: 'PROMO10' };\n    renderWithProvider(<CartSummary />, { initialState: stateWithCoupon });\n\n    await user.click(screen.getByRole('button', { name: 'Remover cupom' }));\n\n    expect(screen.queryByText('Cupom PROMO10 aplicado.')).not.toBeInTheDocument();\n  });\n\n  it('esvazia o carrinho', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    await user.click(screen.getByRole('button', { name: 'Esvaziar carrinho' }));\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n  });\n\n  it('calcula subtotal, desconto e total corretamente', () => {\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    const subtotal = cartSubtotal(initialCartState);\n    const discount = cartDiscount(initialCartState);\n    const total = cartTotal(initialCartState);\n\n    expect(screen.getByTestId('subtotal')).toHaveTextContent(formatCurrency(subtotal));\n    expect(screen.queryByTestId('discount')).not.toBeInTheDocument();\n    expect(screen.getByTestId('total')).toHaveTextContent(formatCurrency(total));\n  });\n\n  it('caso de borda com cupom e carrinho vazio', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: emptyCartState });\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'PROMO10');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n    expect(screen.queryByText('Cupom PROMO10 aplicado.')).not.toBeInTheDocument();\n  });\n});\n",
+      "lines": 112
+    },
+    "final": {
+      "code": "import { render, screen, within } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { CartSummary } from './CartSummary';\nimport { CartProvider } from '../state/CartContext';\nimport { cartSubtotal, cartDiscount, cartTotal } from '../state/cartReducer';\nimport { formatCurrency } from '../utils/format';\n\nfunction renderWithProvider(ui, { initialState } = {}) {\n  return render(<CartProvider initialState={initialState}>{ui}</CartProvider>);\n}\n\nconst initialCartState = {\n  items: [\n    { id: 1, name: 'Produto A', price: 100, quantity: 2 },\n    { id: 2, name: 'Produto B', price: 50, quantity: 1 },\n  ],\n  couponCode: null,\n};\n\nconst emptyCartState = {\n  items: [],\n  couponCode: null,\n};\n\ndescribe('CartSummary', () => {\n  it('renderiza carrinho vazio', () => {\n    renderWithProvider(<CartSummary />, { initialState: emptyCartState });\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n  });\n\n  it('renderiza carrinho com itens', () => {\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    initialCartState.items.forEach((item) => {\n      expect(screen.getByText(`${item.name} × ${item.quantity}`)).toBeInTheDocument();\n      expect(screen.getByText(formatCurrency(item.price * item.quantity))).toBeInTheDocument();\n    });\n  });\n\n  it('aplica cupom válido', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'PROMO10');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByText('Cupom PROMO10 aplicado.')).toBeInTheDocument();\n  });\n\n  it('tenta aplicar cupom inválido', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'INVALIDO');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Cupom inválido.');\n  });\n\n  it('remove item do carrinho', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    await user.click(screen.getByRole('button', { name: 'Remover Produto A' }));\n\n    expect(screen.queryByText('Produto A × 2')).not.toBeInTheDocument();\n  });\n\n  it('remove cupom aplicado', async () => {\n    const user = userEvent.setup();\n    const stateWithCoupon = { ...initialCartState, couponCode: 'PROMO10' };\n    renderWithProvider(<CartSummary />, { initialState: stateWithCoupon });\n\n    await user.click(screen.getByRole('button', { name: 'Remover cupom' }));\n\n    expect(screen.queryByText('Cupom PROMO10 aplicado.')).not.toBeInTheDocument();\n  });\n\n  it('esvazia o carrinho', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    await user.click(screen.getByRole('button', { name: 'Esvaziar carrinho' }));\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n  });\n\n  it('calcula subtotal, desconto e total corretamente', () => {\n    renderWithProvider(<CartSummary />, { initialState: initialCartState });\n\n    const subtotal = cartSubtotal(initialCartState);\n    const discount = cartDiscount(initialCartState);\n    const total = cartTotal(initialCartState);\n\n    expect(screen.getByTestId('subtotal')).toHaveTextContent(formatCurrency(subtotal));\n    expect(screen.queryByTestId('discount')).not.toBeInTheDocument();\n    expect(screen.getByTestId('total')).toHaveTextContent(formatCurrency(total));\n  });\n\n  it('caso de borda com cupom e carrinho vazio', async () => {\n    const user = userEvent.setup();\n    renderWithProvider(<CartSummary />, { initialState: emptyCartState });\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'PROMO10');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n    expect(screen.queryByText('Cupom PROMO10 aplicado.')).not.toBeInTheDocument();\n  });\n});\n",
+      "lines": 112
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 0,
+      "branches": 0,
+      "functions": 0,
+      "lines": 0
+    },
+    "rejectedRepairs": 0,
+    "testFilePath": "src/components/CartSummary.test.tsx",
+    "history": []
+  }
+}

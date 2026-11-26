@@ -1,0 +1,85 @@
+{
+  "component": "src/components/LoginForm.tsx",
+  "config": "C2",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T030522758Z-9c9753",
+    "component": "src/components/LoginForm.tsx",
+    "config": {
+      "heal": true,
+      "elicit": true,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 20,
+      "inputTokens": 106891,
+      "outputTokens": 15908
+    },
+    "agents": {
+      "context": {
+        "steps": 6,
+        "toolCalls": 8
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 3,
+        "toolCalls": 3
+      },
+      "executor": {
+        "steps": 4,
+        "toolCalls": 2
+      },
+      "repairer": {
+        "steps": 6,
+        "toolCalls": 6
+      }
+    },
+    "timings": {
+      "totalMs": 139139.44650000002,
+      "perAgentMs": {
+        "context": 5964.210699999996,
+        "elicitation": 0.004600000014761463,
+        "generator": 17948.049299999984,
+        "executor": 17340.333600000013,
+        "repairer": 97883.01440000001,
+        "verifier": 0.0038999999524094164
+      }
+    },
+    "status": "PASSED",
+    "iterations": 1,
+    "generated": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { LoginForm } from './LoginForm';\nimport { login } from '../services/authApi';\n\njest.mock('../services/authApi');\nconst mockedLogin = jest.mocked(login);\n\ndescribe('LoginForm', () => {\n  beforeEach(() => {\n    mockedLogin.mockReset();\n  });\n\n  it('renderiza o formulário de login inicialmente', () => {\n    render(<LoginForm />);\n\n    expect(screen.getByLabelText('E-mail')).toHaveValue('');\n    expect(screen.getByLabelText('Senha')).toHaveValue('');\n    expect(screen.queryByRole('alert')).not.toBeInTheDocument();\n  });\n\n  it('exibe erro para e-mail inválido', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'invalid-email');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('E-mail inválido.');\n  });\n\n  it('exibe erro para senha abaixo do comprimento mínimo', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), '123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('A senha deve ter pelo menos 8 caracteres.');\n  });\n\n  it('exibe erro para campos vazios', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Informe o e-mail.');\n    expect(screen.getByRole('alert')).toHaveTextContent('Informe a senha.');\n  });\n\n  it('submete o formulário com sucesso', async () => {\n    const user = userEvent.setup();\n    const onSuccess = jest.fn();\n    mockedLogin.mockResolvedValue({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n    render(<LoginForm onSuccess={onSuccess} />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('status')).toHaveTextContent('Bem-vindo, John Doe!');\n    expect(onSuccess).toHaveBeenCalledWith({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n  });\n\n  it('exibe mensagem de erro da API', async () => {\n    const user = userEvent.setup();\n    mockedLogin.mockRejectedValue(new Error('Erro de autenticação'));\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('alert')).toHaveTextContent('Erro de autenticação');\n  });\n\n  it('desabilita botão de submit durante carregamento', async () => {\n    let finish!: () => void;\n    mockedLogin.mockImplementation(() => new Promise((resolve) => (finish = resolve)));\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('button', { name: 'Entrando...' })).toBeDisabled();\n    finish();\n  });\n\n  it('caso de borda com e-mail e senha vazios', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Informe o e-mail.');\n    expect(screen.getByRole('alert')).toHaveTextContent('Informe a senha.');\n  });\n});\n",
+      "lines": 103
+    },
+    "final": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { LoginForm } from './LoginForm';\nimport { login, type LoginResponse } from '../services/authApi';\n\njest.mock('../services/authApi');\nconst mockedLogin = jest.mocked(login);\n\ndescribe('LoginForm', () => {\n  beforeEach(() => {\n    mockedLogin.mockReset();\n  });\n\n  it('renderiza o formulário de login inicialmente', () => {\n    render(<LoginForm />);\n\n    expect(screen.getByLabelText('E-mail')).toHaveValue('');\n    expect(screen.getByLabelText('Senha')).toHaveValue('');\n    expect(screen.queryByRole('alert')).not.toBeInTheDocument();\n  });\n\n  it('exibe erro para e-mail inválido', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'invalid-email');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    const alerts = screen.getAllByRole('alert');\n    expect(alerts).toHaveLength(2);\n    expect(alerts[0]).toHaveTextContent('E-mail inválido.');\n    expect(alerts[1]).toHaveTextContent('Informe a senha.');\n  });\n\n  it('exibe erro para senha abaixo do comprimento mínimo', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), '123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('A senha deve ter pelo menos 8 caracteres.');\n  });\n\n  it('exibe erro para campos vazios', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    const alerts = screen.getAllByRole('alert');\n    expect(alerts).toHaveLength(2);\n    expect(alerts[0]).toHaveTextContent('Informe o e-mail.');\n    expect(alerts[1]).toHaveTextContent('Informe a senha.');\n  });\n\n  it('submete o formulário com sucesso', async () => {\n    const user = userEvent.setup();\n    const onSuccess = jest.fn();\n    mockedLogin.mockResolvedValue({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n    render(<LoginForm onSuccess={onSuccess} />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('status')).toHaveTextContent('Bem-vindo, John Doe!');\n    expect(onSuccess).toHaveBeenCalledWith({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n  });\n\n  it('exibe mensagem de erro da API', async () => {\n    const user = userEvent.setup();\n    mockedLogin.mockRejectedValue(new Error('Erro de autenticação'));\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('alert')).toHaveTextContent('Erro de autenticação');\n  });\n\n  it('desabilita botão de submit durante carregamento', async () => {\n    let finish!: (response: LoginResponse) => void;\n    mockedLogin.mockImplementation(() => new Promise<LoginResponse>((resolve) => { finish = resolve; }));\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'test@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('button', { name: 'Entrando...' })).toBeDisabled();\n    finish({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n  });\n\n  it('caso de borda com e-mail e senha vazios', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    const alerts = screen.getAllByRole('alert');\n    expect(alerts).toHaveLength(2);\n    expect(alerts[0]).toHaveTextContent('Informe o e-mail.');\n    expect(alerts[1]).toHaveTextContent('Informe a senha.');\n  });\n});\n",
+      "lines": 110
+    },
+    "modificationRate": 0.1553,
+    "coverage": {
+      "statements": 100,
+      "branches": 96.55,
+      "functions": 100,
+      "lines": 100
+    },
+    "rejectedRepairs": 0,
+    "testFilePath": "src/components/LoginForm.test.tsx",
+    "history": [
+      {
+        "iteration": 1,
+        "category": "SYNTAX_TYPE",
+        "summary": "The test suite failed to run due to a TypeScript error on line 82 of LoginForm.test.tsx. The error TS2322 indicates a type mismatch where a function expecting no arguments is being assigned a function that expects one or more arguments.",
+        "repairStatus": "REPAIRED",
+        "reasoning": "A falha inicial foi causada por um erro de tipo na implementação do mock. Corrigi o teste importando o tipo LoginResponse corretamente e ajustei as asserções para lidar com múltiplos elementos com o papel 'alert'. Após essas correções, todos os testes passaram com sucesso.",
+        "rejectedRepairs": 0
+      }
+    ]
+  }
+}

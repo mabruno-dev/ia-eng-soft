@@ -1,0 +1,71 @@
+{
+  "component": "src/components/CartSummary.tsx",
+  "config": "C1",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T033320406Z-0e81a3",
+    "component": "src/components/CartSummary.tsx",
+    "config": {
+      "heal": false,
+      "elicit": false,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 13,
+      "inputTokens": 56794,
+      "outputTokens": 9159
+    },
+    "agents": {
+      "context": {
+        "steps": 6,
+        "toolCalls": 10
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 4,
+        "toolCalls": 3
+      },
+      "executor": {
+        "steps": 2,
+        "toolCalls": 1
+      }
+    },
+    "timings": {
+      "totalMs": 66219.0391,
+      "perAgentMs": {
+        "context": 7560.067900000024,
+        "generator": 41962.772400000016,
+        "executor": 16689.626700000023,
+        "verifier": 0.013399999996181577
+      }
+    },
+    "status": "FAILED",
+    "iterations": 0,
+    "generated": {
+      "code": "import { render, screen, within } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { CartSummary } from './CartSummary';\nimport { CartProvider } from '../state/CartContext';\nimport type { CartState } from '@/types/cart';\n\nfunction renderWithProvider(initialState: CartState) {\n  return render(\n    <CartProvider initialState={initialState}>\n      <CartSummary />\n    </CartProvider>\n  );\n}\n\ndescribe('CartSummary', () => {\n  it('renderiza mensagem de carrinho vazio', () => {\n    renderWithProvider({ items: [], couponCode: null });\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n  });\n\n  it('renderiza itens do carrinho', () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n        { id: '2', name: 'Produto B', price: 50, quantity: 1 },\n      ],\n      couponCode: null,\n    };\n    renderWithProvider(initialState);\n\n    const items = screen.getAllByRole('listitem');\n    expect(items).toHaveLength(2);\n    expect(items[0]).toHaveTextContent('Produto A × 2');\n    expect(items[0]).toHaveTextContent('R$ 200,00');\n    expect(items[1]).toHaveTextContent('Produto B × 1');\n    expect(items[1]).toHaveTextContent('R$ 50,00');\n  });\n\n  it('aplica cupom válido', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n      ],\n      couponCode: null,\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'PROMO10');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByText('Cupom PROMO10 aplicado.')).toBeInTheDocument();\n  });\n\n  it('exibe erro para cupom inválido', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n      ],\n      couponCode: null,\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'INVALIDO');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Cupom inválido.');\n  });\n\n  it('remove item do carrinho', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n        { id: '2', name: 'Produto B', price: 50, quantity: 1 },\n      ],\n      couponCode: null,\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.click(screen.getByRole('button', { name: 'Remover Produto A' }));\n\n    const items = screen.getAllByRole('listitem');\n    expect(items).toHaveLength(1);\n    expect(items[0]).toHaveTextContent('Produto B × 1');\n  });\n\n  it('remove cupom aplicado', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n      ],\n      couponCode: 'PROMO10',\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.click(screen.getByRole('button', { name: 'Remover cupom' }));\n\n    expect(screen.getByLabelText('Cupom de desconto')).toBeInTheDocument();\n  });\n\n  it('esvazia o carrinho', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n        { id: '2', name: 'Produto B', price: 50, quantity: 1 },\n      ],\n      couponCode: null,\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.click(screen.getByRole('button', { name: 'Esvaziar carrinho' }));\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n  });\n\n  it('calcula subtotal, desconto e total corretamente', () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n        { id: '2', name: 'Produto B', price: 50, quantity: 1 },\n      ],\n      couponCode: 'PROMO10',\n    };\n    renderWithProvider(initialState);\n\n    expect(screen.getByTestId('subtotal')).toHaveTextContent('R$ 250,00');\n    expect(screen.getByTestId('discount')).toHaveTextContent('-R$ 25,00');\n    expect(screen.getByTestId('total')).toHaveTextContent('R$ 225,00');\n  });\n\n  it('renderiza corretamente com cupom não aplicado', () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n      ],\n      couponCode: null,\n    };\n    renderWithProvider(initialState);\n\n    expect(screen.getByLabelText('Cupom de desconto')).toBeInTheDocument();\n  });\n});\n",
+      "lines": 148
+    },
+    "final": {
+      "code": "import { render, screen, within } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { CartSummary } from './CartSummary';\nimport { CartProvider } from '../state/CartContext';\nimport type { CartState } from '@/types/cart';\n\nfunction renderWithProvider(initialState: CartState) {\n  return render(\n    <CartProvider initialState={initialState}>\n      <CartSummary />\n    </CartProvider>\n  );\n}\n\ndescribe('CartSummary', () => {\n  it('renderiza mensagem de carrinho vazio', () => {\n    renderWithProvider({ items: [], couponCode: null });\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n  });\n\n  it('renderiza itens do carrinho', () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n        { id: '2', name: 'Produto B', price: 50, quantity: 1 },\n      ],\n      couponCode: null,\n    };\n    renderWithProvider(initialState);\n\n    const items = screen.getAllByRole('listitem');\n    expect(items).toHaveLength(2);\n    expect(items[0]).toHaveTextContent('Produto A × 2');\n    expect(items[0]).toHaveTextContent('R$ 200,00');\n    expect(items[1]).toHaveTextContent('Produto B × 1');\n    expect(items[1]).toHaveTextContent('R$ 50,00');\n  });\n\n  it('aplica cupom válido', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n      ],\n      couponCode: null,\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'PROMO10');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByText('Cupom PROMO10 aplicado.')).toBeInTheDocument();\n  });\n\n  it('exibe erro para cupom inválido', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n      ],\n      couponCode: null,\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.type(screen.getByLabelText('Cupom de desconto'), 'INVALIDO');\n    await user.click(screen.getByRole('button', { name: 'Aplicar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Cupom inválido.');\n  });\n\n  it('remove item do carrinho', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n        { id: '2', name: 'Produto B', price: 50, quantity: 1 },\n      ],\n      couponCode: null,\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.click(screen.getByRole('button', { name: 'Remover Produto A' }));\n\n    const items = screen.getAllByRole('listitem');\n    expect(items).toHaveLength(1);\n    expect(items[0]).toHaveTextContent('Produto B × 1');\n  });\n\n  it('remove cupom aplicado', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n      ],\n      couponCode: 'PROMO10',\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.click(screen.getByRole('button', { name: 'Remover cupom' }));\n\n    expect(screen.getByLabelText('Cupom de desconto')).toBeInTheDocument();\n  });\n\n  it('esvazia o carrinho', async () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n        { id: '2', name: 'Produto B', price: 50, quantity: 1 },\n      ],\n      couponCode: null,\n    };\n    const user = userEvent.setup();\n    renderWithProvider(initialState);\n\n    await user.click(screen.getByRole('button', { name: 'Esvaziar carrinho' }));\n\n    expect(screen.getByText('Seu carrinho está vazio.')).toBeInTheDocument();\n  });\n\n  it('calcula subtotal, desconto e total corretamente', () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n        { id: '2', name: 'Produto B', price: 50, quantity: 1 },\n      ],\n      couponCode: 'PROMO10',\n    };\n    renderWithProvider(initialState);\n\n    expect(screen.getByTestId('subtotal')).toHaveTextContent('R$ 250,00');\n    expect(screen.getByTestId('discount')).toHaveTextContent('-R$ 25,00');\n    expect(screen.getByTestId('total')).toHaveTextContent('R$ 225,00');\n  });\n\n  it('renderiza corretamente com cupom não aplicado', () => {\n    const initialState = {\n      items: [\n        { id: '1', name: 'Produto A', price: 100, quantity: 2 },\n      ],\n      couponCode: null,\n    };\n    renderWithProvider(initialState);\n\n    expect(screen.getByLabelText('Cupom de desconto')).toBeInTheDocument();\n  });\n});\n",
+      "lines": 148
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "rejectedRepairs": 0,
+    "alignedToBehavior": 0,
+    "testFilePath": "src/components/CartSummary.test.tsx",
+    "history": []
+  }
+}

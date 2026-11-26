@@ -1,0 +1,71 @@
+{
+  "component": "src/components/Button.tsx",
+  "config": "C1",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T032818572Z-483f81",
+    "component": "src/components/Button.tsx",
+    "config": {
+      "heal": false,
+      "elicit": false,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 9,
+      "inputTokens": 20871,
+      "outputTokens": 3236
+    },
+    "agents": {
+      "context": {
+        "steps": 4,
+        "toolCalls": 3
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 2,
+        "toolCalls": 2
+      },
+      "executor": {
+        "steps": 2,
+        "toolCalls": 1
+      }
+    },
+    "timings": {
+      "totalMs": 32181.312099999996,
+      "perAgentMs": {
+        "context": 7713.1947,
+        "generator": 16878.8819,
+        "executor": 7561.952900000004,
+        "verifier": 0.034599999999045394
+      }
+    },
+    "status": "FAILED",
+    "iterations": 0,
+    "generated": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { Button } from './Button';\n\ndescribe('Button', () => {\n  it('renderiza com o texto correto', () => {\n    render(<Button>Click me</Button>);\n    expect(screen.getByRole('button')).toHaveTextContent('Click me');\n  });\n\n  it('aplica a classe correta para a variante primária', () => {\n    render(<Button variant=\"primary\">Primary</Button>);\n    expect(screen.getByRole('button')).toHaveClass('btn-primary');\n  });\n\n  it('aplica a classe correta para a variante secundária', () => {\n    render(<Button variant=\"secondary\">Secondary</Button>);\n    expect(screen.getByRole('button')).toHaveClass('btn-secondary');\n  });\n\n  it('aplica a classe correta para a variante danger', () => {\n    render(<Button variant=\"danger\">Danger</Button>);\n    expect(screen.getByRole('button')).toHaveClass('btn-danger');\n  });\n\n  it('executa onClick quando clicado', async () => {\n    const handleClick = jest.fn();\n    render(<Button onClick={handleClick}>Click me</Button>);\n    const user = userEvent.setup();\n    await user.click(screen.getByRole('button'));\n    expect(handleClick).toHaveBeenCalledTimes(1);\n  });\n\n  it('não executa onClick quando desabilitado', async () => {\n    const handleClick = jest.fn();\n    render(<Button onClick={handleClick} disabled>Click me</Button>);\n    const user = userEvent.setup();\n    await user.click(screen.getByRole('button'));\n    expect(handleClick).not.toHaveBeenCalled();\n  });\n\n  it('renderiza com o tipo de botão correto', () => {\n    render(<Button type=\"submit\">Submit</Button>);\n    expect(screen.getByRole('button')).toHaveAttribute('type', 'submit');\n\n    render(<Button type=\"reset\">Reset</Button>);\n    expect(screen.getByRole('button')).toHaveAttribute('type', 'reset');\n\n    render(<Button type=\"button\">Button</Button>);\n    expect(screen.getByRole('button')).toHaveAttribute('type', 'button');\n  });\n\n  it('renderiza corretamente quando desabilitado', () => {\n    render(<Button disabled>Disabled</Button>);\n    const button = screen.getByRole('button');\n    expect(button).toBeDisabled();\n    expect(button).toHaveAttribute('aria-disabled', 'true');\n  });\n});\n",
+      "lines": 60
+    },
+    "final": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { Button } from './Button';\n\ndescribe('Button', () => {\n  it('renderiza com o texto correto', () => {\n    render(<Button>Click me</Button>);\n    expect(screen.getByRole('button')).toHaveTextContent('Click me');\n  });\n\n  it('aplica a classe correta para a variante primária', () => {\n    render(<Button variant=\"primary\">Primary</Button>);\n    expect(screen.getByRole('button')).toHaveClass('btn-primary');\n  });\n\n  it('aplica a classe correta para a variante secundária', () => {\n    render(<Button variant=\"secondary\">Secondary</Button>);\n    expect(screen.getByRole('button')).toHaveClass('btn-secondary');\n  });\n\n  it('aplica a classe correta para a variante danger', () => {\n    render(<Button variant=\"danger\">Danger</Button>);\n    expect(screen.getByRole('button')).toHaveClass('btn-danger');\n  });\n\n  it('executa onClick quando clicado', async () => {\n    const handleClick = jest.fn();\n    render(<Button onClick={handleClick}>Click me</Button>);\n    const user = userEvent.setup();\n    await user.click(screen.getByRole('button'));\n    expect(handleClick).toHaveBeenCalledTimes(1);\n  });\n\n  it('não executa onClick quando desabilitado', async () => {\n    const handleClick = jest.fn();\n    render(<Button onClick={handleClick} disabled>Click me</Button>);\n    const user = userEvent.setup();\n    await user.click(screen.getByRole('button'));\n    expect(handleClick).not.toHaveBeenCalled();\n  });\n\n  it('renderiza com o tipo de botão correto', () => {\n    render(<Button type=\"submit\">Submit</Button>);\n    expect(screen.getByRole('button')).toHaveAttribute('type', 'submit');\n\n    render(<Button type=\"reset\">Reset</Button>);\n    expect(screen.getByRole('button')).toHaveAttribute('type', 'reset');\n\n    render(<Button type=\"button\">Button</Button>);\n    expect(screen.getByRole('button')).toHaveAttribute('type', 'button');\n  });\n\n  it('renderiza corretamente quando desabilitado', () => {\n    render(<Button disabled>Disabled</Button>);\n    const button = screen.getByRole('button');\n    expect(button).toBeDisabled();\n    expect(button).toHaveAttribute('aria-disabled', 'true');\n  });\n});\n",
+      "lines": 60
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "rejectedRepairs": 0,
+    "alignedToBehavior": 0,
+    "testFilePath": "src/components/Button.test.tsx",
+    "history": []
+  }
+}

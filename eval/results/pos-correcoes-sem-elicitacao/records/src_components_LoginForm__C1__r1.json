@@ -1,0 +1,71 @@
+{
+  "component": "src/components/LoginForm.tsx",
+  "config": "C1",
+  "repetition": 1,
+  "record": {
+    "runId": "20261125T032920441Z-157308",
+    "component": "src/components/LoginForm.tsx",
+    "config": {
+      "heal": false,
+      "elicit": false,
+      "verify": true,
+      "maxIterations": 3,
+      "maxAgentSteps": 8,
+      "model": "gpt-4o",
+      "provider": "openai"
+    },
+    "llm": {
+      "calls": 14,
+      "inputTokens": 72886,
+      "outputTokens": 9713
+    },
+    "agents": {
+      "context": {
+        "steps": 5,
+        "toolCalls": 8
+      },
+      "generator.plan": {
+        "steps": 1,
+        "toolCalls": 0
+      },
+      "generator.code": {
+        "steps": 6,
+        "toolCalls": 4
+      },
+      "executor": {
+        "steps": 2,
+        "toolCalls": 1
+      }
+    },
+    "timings": {
+      "totalMs": 66098.37099999998,
+      "perAgentMs": {
+        "context": 6601.546499999997,
+        "generator": 49415.42640000001,
+        "executor": 10075.753300000011,
+        "verifier": 0.01570000000356231
+      }
+    },
+    "status": "PASSED",
+    "iterations": 0,
+    "generated": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { LoginForm } from './LoginForm';\nimport { login, type LoginResponse } from '../services/authApi';\n\njest.mock('../services/authApi');\nconst mockedLogin = jest.mocked(login);\n\ndescribe('LoginForm', () => {\n  beforeEach(() => {\n    mockedLogin.mockReset();\n  });\n\n  it('renderiza o formulário de login inicialmente', () => {\n    render(<LoginForm />);\n\n    expect(screen.getByLabelText('E-mail')).toHaveValue('');\n    expect(screen.getByLabelText('Senha')).toHaveValue('');\n    expect(screen.getByRole('button', { name: 'Entrar' })).toBeEnabled();\n  });\n\n  it('exibe erro ao submeter com e-mail vazio', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Informe o e-mail.');\n  });\n\n  it('exibe erro ao submeter com e-mail inválido', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'invalid-email');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('E-mail inválido.');\n  });\n\n  it('exibe erro ao submeter com senha vazia', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Informe a senha.');\n  });\n\n  it('exibe erro ao submeter com senha curta', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'short');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('A senha deve ter pelo menos 8 caracteres.');\n  });\n\n  it('submete com sucesso e exibe mensagem de boas-vindas', async () => {\n    mockedLogin.mockResolvedValue({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('status')).toHaveTextContent('Bem-vindo, John Doe!');\n  });\n\n  it('exibe mensagem de erro ao falhar no login', async () => {\n    mockedLogin.mockRejectedValue(new Error('Credenciais inválidas'));\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('alert')).toHaveTextContent('Credenciais inválidas');\n  });\n\n  it('desabilita botão de submit durante carregamento', async () => {\n    let finish: (value: LoginResponse | PromiseLike<LoginResponse>) => void = () => {};\n    mockedLogin.mockImplementation(() => new Promise((resolve) => (finish = resolve)));\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('button', { name: 'Entrando...' })).toBeDisabled();\n    finish({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n  });\n});\n",
+      "lines": 102
+    },
+    "final": {
+      "code": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport '@testing-library/jest-dom';\nimport { LoginForm } from './LoginForm';\nimport { login, type LoginResponse } from '../services/authApi';\n\njest.mock('../services/authApi');\nconst mockedLogin = jest.mocked(login);\n\ndescribe('LoginForm', () => {\n  beforeEach(() => {\n    mockedLogin.mockReset();\n  });\n\n  it('renderiza o formulário de login inicialmente', () => {\n    render(<LoginForm />);\n\n    expect(screen.getByLabelText('E-mail')).toHaveValue('');\n    expect(screen.getByLabelText('Senha')).toHaveValue('');\n    expect(screen.getByRole('button', { name: 'Entrar' })).toBeEnabled();\n  });\n\n  it('exibe erro ao submeter com e-mail vazio', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Informe o e-mail.');\n  });\n\n  it('exibe erro ao submeter com e-mail inválido', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'invalid-email');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('E-mail inválido.');\n  });\n\n  it('exibe erro ao submeter com senha vazia', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('Informe a senha.');\n  });\n\n  it('exibe erro ao submeter com senha curta', async () => {\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'short');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('alert')).toHaveTextContent('A senha deve ter pelo menos 8 caracteres.');\n  });\n\n  it('submete com sucesso e exibe mensagem de boas-vindas', async () => {\n    mockedLogin.mockResolvedValue({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('status')).toHaveTextContent('Bem-vindo, John Doe!');\n  });\n\n  it('exibe mensagem de erro ao falhar no login', async () => {\n    mockedLogin.mockRejectedValue(new Error('Credenciais inválidas'));\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(await screen.findByRole('alert')).toHaveTextContent('Credenciais inválidas');\n  });\n\n  it('desabilita botão de submit durante carregamento', async () => {\n    let finish: (value: LoginResponse | PromiseLike<LoginResponse>) => void = () => {};\n    mockedLogin.mockImplementation(() => new Promise((resolve) => (finish = resolve)));\n    const user = userEvent.setup();\n    render(<LoginForm />);\n\n    await user.type(screen.getByLabelText('E-mail'), 'user@example.com');\n    await user.type(screen.getByLabelText('Senha'), 'password123');\n    await user.click(screen.getByRole('button', { name: 'Entrar' }));\n\n    expect(screen.getByRole('button', { name: 'Entrando...' })).toBeDisabled();\n    finish({ token: 'abc123', user: { id: 1, name: 'John Doe' } });\n  });\n});\n",
+      "lines": 102
+    },
+    "modificationRate": 0,
+    "coverage": {
+      "statements": 100,
+      "branches": 96.55,
+      "functions": 100,
+      "lines": 100
+    },
+    "rejectedRepairs": 0,
+    "alignedToBehavior": 0,
+    "testFilePath": "src/components/LoginForm.test.tsx",
+    "history": []
+  }
+}
