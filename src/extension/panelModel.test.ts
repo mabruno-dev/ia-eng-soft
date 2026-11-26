@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PipelineEvent } from '../core/types';
 import { renderPanelHtml } from './panelHtml';
-import { eventToMessage, initMessage, progressMessage, statusBarText } from './panelModel';
+import { eventToMessage, initMessage, progressMessage, statusBarText, suspectedBugNotice } from './panelModel';
 
 const result = (o: Partial<Extract<PipelineEvent, { type: 'result' }>> = {}): PipelineEvent => ({
   type: 'result', runId: 'r1', component: 'src/components/CartSummary.tsx', status: 'PASSED',
@@ -95,6 +95,16 @@ describe('eventToMessage', () => {
   it('eventos só do terminal não geram mensagem', () => {
     expect(eventToMessage({ type: 'stage-start', stage: 'context', label: 'Contexto' })).toBeUndefined();
     expect(eventToMessage({ type: 'agent-step', agent: 'context', label: 'Contexto', entry: { ts: '', agent: 'context', step: 1, kind: 'final', llmMs: 0, ms: 0 } })).toBeUndefined();
+  });
+});
+
+describe('notificação de SUSPECTED_COMPONENT_BUG', () => {
+  it('texto não bloqueante com "Abrir teste" e "Ver painel"; o selo amarelo do painel continua', () => {
+    expect(suspectedBugNotice()).toEqual({
+      text: 'Suspeita de defeito no componente: o teste NÃO foi alterado',
+      buttons: ['Abrir teste', 'Ver painel'],
+    });
+    expect(eventToMessage(result({ status: 'SUSPECTED_COMPONENT_BUG' }))).toMatchObject({ kind: 'result', tone: 'warning' });
   });
 });
 

@@ -8,7 +8,7 @@ import { componentName, mutationLine, renderReport, suggestionLines } from '../c
 import type { LLMClient, LLMRequest, PipelineConfig, RunRecord } from '../core/types';
 import { VSCodeAsker } from './vscodeAsker';
 import { PanelAsker, PipelinePanel } from './panel';
-import { eventToMessage, initMessage, progressMessage, statusBarText } from './panelModel';
+import { eventToMessage, initMessage, progressMessage, statusBarText, SUSPECTED_BUG_NOTICE, suspectedBugNotice } from './panelModel';
 import { listCopilotModels, runCopilotEvaluation } from './evaluation';
 import { CLAUDE_CLI_DEFAULT_MODEL, CLAUDE_CLI_FALLBACK_MODEL, ClaudeCliClient } from '../llm/claudeCli';
 import { OpenAIClient } from '../llm/openai';
@@ -239,19 +239,20 @@ async function finish(workspaceRoot: string, record: RunRecord): Promise<void> {
   const showSuggestions = 'Ver sugestões';
   let choice: string | undefined;
   if (record.status === 'SUSPECTED_COMPONENT_BUG') {
+    // Notificação comum (não modal, não aguardada): não interrompe a demo nem prende o run.
     const last = record.history?.at(-1);
-    choice = await vscode.window.showWarningMessage(
-      `ReacTest: o componente ${componentName(record)} pode ter um DEFEITO.`,
-      {
-        modal: true,
-        detail:
-          'O Reparador concluiu que a expectativa do teste está correta e que o componente não a satisfaz. ' +
-          'O teste NÃO foi alterado — revise o componente.' +
-          (last ? `\n\n${last.note}` : ''),
-      },
-      openReport,
-      showLog,
+    if (last?.note) output.appendLine(`Reparador: ${last.note}`);
+    const notice = suspectedBugNotice();
+    void vscode.window.showWarningMessage(notice.text, ...notice.buttons).then((c) =>
+      ui(() => {
+        if (c === SUSPECTED_BUG_NOTICE.openTest && testAbs && existsSync(testAbs)) {
+          void vscode.window.showTextDocument(vscode.Uri.file(testAbs), { viewColumn: vscode.ViewColumn.One, preview: false });
+        } else if (c === SUSPECTED_BUG_NOTICE.showPanel) {
+          PipelinePanel.show((l) => output.appendLine(l));
+        }
+      }),
     );
+    return;
   } else if (record.status === 'PASSED') {
     const nSug = record.verification?.suggestions.length ?? 0;
     const buttons = nSug ? [showSuggestions, openReport] : [openReport, showLog];

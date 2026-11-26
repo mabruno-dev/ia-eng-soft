@@ -170,3 +170,14 @@ export function statusBarText(e: PipelineEvent): { text: string; tooltip: string
       return undefined;
   }
 }
+
+/** Notificação NÃO bloqueante do fim do run com SUSPECTED_COMPONENT_BUG (o selo amarelo do painel continua). */
+export const SUSPECTED_BUG_NOTICE = {
+  text: 'Suspeita de defeito no componente: o teste NÃO foi alterado',
+  openTest: 'Abrir teste',
+  showPanel: 'Ver painel',
+} as const;
+
+export function suspectedBugNotice(): { text: string; buttons: string[] } {
+  return { text: SUSPECTED_BUG_NOTICE.text, buttons: [SUSPECTED_BUG_NOTICE.openTest, SUSPECTED_BUG_NOTICE.showPanel] };
+}
